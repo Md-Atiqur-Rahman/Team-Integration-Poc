@@ -11,3 +11,4 @@ appsettings.*.secret.json
 *.pem
 *.key
 *.cer
+**/App_Data/

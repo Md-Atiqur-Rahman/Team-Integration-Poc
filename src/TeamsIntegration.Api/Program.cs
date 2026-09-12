@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Options;
 using Microsoft.Identity.Web;
+using Microsoft.Identity.Web.TokenCacheProviders.Distributed;
 using MongoDB.Driver;
 using TeamsIntegration.Api.Configuration;
 using TeamsIntegration.Api.Models;
@@ -15,7 +17,15 @@ builder.Services
     .AddAuthentication(OpenIdConnectDefaults.AuthenticationScheme)
     .AddMicrosoftIdentityWebApp(builder.Configuration.GetSection("AzureAd"))
     .EnableTokenAcquisitionToCallDownstreamApi(TeamsGraphService.RequiredScopes)
-    .AddInMemoryTokenCaches();
+    .AddDistributedTokenCaches();
+
+builder.Services.AddStackExchangeRedisCache(options =>
+    builder.Configuration.GetSection("Redis").Bind(options));
+builder.Services.Configure<MsalDistributedTokenCacheAdapterOptions>(options => options.Encrypt = true);
+builder.Services.AddDataProtection()
+    .SetApplicationName("TeamsIntegration.POC")
+    .PersistKeysToFileSystem(new DirectoryInfo(
+        Path.Combine(builder.Environment.ContentRootPath, "App_Data", "dataprotection-keys")));
 
 builder.Services.Configure<CookieAuthenticationOptions>(
     CookieAuthenticationDefaults.AuthenticationScheme,

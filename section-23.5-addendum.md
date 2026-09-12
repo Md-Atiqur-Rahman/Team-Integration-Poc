@@ -48,3 +48,94 @@ Complete these as separate, small tasks:
 The next task is **task 4**, with the sequencing exception above in effect.
 Task 1 remains a hard prerequisite before this integration handles real,
 untrusted multi-tenant traffic.
+
+### Task 4 completion record (2026-09-12)
+
+Task 4 (MongoDB Configuration + Token Management) has been implemented in
+`TeamsIntegration.POC/src/TeamsIntegration.Api/`, building on the existing
+validated `TeamsController`/`TeamsGraphService`/`TeamsGraphExceptionHandler`/
+`AuthController` rather than replacing them:
+
+- **`TeamsConfigurations` MongoDB collection** (`Models/TeamsConfiguration.cs`),
+  matching POC-PLAN.md Section 10.1's schema exactly, with a unique compound
+  index on `{ organizationId, projectId, applicationId }`
+  (`Repositories/MongoIndexInitializer.cs`, applied lazily and idempotently
+  on first write rather than at host startup, so hosts that never touch this
+  feature don't require a live Mongo connection).
+- **`PUT /api/teams/configuration`** and **`GET /api/teams/configuration`**
+  (`Controllers/TeamsConfigurationController.cs`,
+  `Services/TeamsConfigurationService.cs`,
+  `Repositories/MongoTeamsConfigurationRepository.cs`). Per the sequencing
+  exception above, `organizationId`/`projectId`/`applicationId` are **trusted
+  as given** — no host-context verification was added. Before every save, the
+  selected team/channel is revalidated against Microsoft Graph by reusing the
+  existing `ITeamsGraphService.GetTeamsAsync`/`GetChannelsAsync` calls (no new
+  Graph endpoints); a failed revalidation returns `404` and writes nothing to
+  Mongo. `GET` returns `404 configuration_not_found` when no configuration
+  exists for the given key.
+- **Token cache unchanged for Task 4** — still the in-memory
+  `AddInMemoryTokenCaches()` at the time; no raw access/refresh tokens are
+  stored in MongoDB anywhere. (Superseded by Task 5, below — the cache is now
+  distributed.)
+- **Graph best-practices additions**: `TeamsGraphService` now sends a unique
+  GUID per Graph request in `client-request-id` (logged), and
+  `TeamsGraphExceptionHandler` forwards `Retry-After` on `429` responses.
+- **Tests**: `tests/TeamsIntegration.Api.Tests/` gained repository/service
+  tests (Mongo2Go embedded `mongod`, no Docker dependency) covering the
+  unique-index rejection, successful upsert + round-trip read, `GET`
+  returning `null`/`404` when absent, and revalidation failure blocking the
+  save (missing team, missing channel). All 12 tests (6 pre-existing + 6 new)
+  pass; `dotnet build` is clean.
+
+**This does not change the sequencing exception or resolve Task 1.** The
+configuration endpoints still trust caller-supplied host IDs. Task 1 (host-
+context contract) and Task 3 (enforce host authorization) remain required
+before this handles real, untrusted multi-tenant traffic — see the exception
+note above, which stays in effect unchanged.
+
+### Task 5 completion record (2026-09-12)
+
+Task 5 (durable token management) has been implemented in
+`src/TeamsIntegration.Api/Program.cs`, replacing `AddInMemoryTokenCaches()`
+with a real distributed cache — no other backend code changed:
+
+- **`AddDistributedTokenCaches()`** (Microsoft.Identity.Web) backed by
+  **Redis** via `AddStackExchangeRedisCache`, configured from the new
+  `Redis` section in `appsettings.json` (`Configuration`/`InstanceName`,
+  bound directly to `RedisCacheOptions` — no custom options class needed).
+  Confirmed via research before implementing: both the registered
+  `IDistributedCache` and MSAL's distributed token cache connect lazily on
+  first actual use, not at host startup, so this does not force a live Redis
+  connection for hosts/tests that never acquire a token (the existing
+  `AuthenticationEndpointTests` stayed green with no Redis running during
+  development).
+- **Encryption at rest**: `Configure<MsalDistributedTokenCacheAdapterOptions>(o => o.Encrypt = true)`
+  makes MSAL encrypt cached token blobs via ASP.NET Core Data Protection
+  before they reach Redis.
+- **Data Protection key ring**: `AddDataProtection().SetApplicationName("TeamsIntegration.POC").PersistKeysToFileSystem(...)`
+  persists keys explicitly to `src/TeamsIntegration.Api/App_Data/dataprotection-keys/`
+  (now gitignored) instead of relying on the OS-default implicit location,
+  so the key ring — and therefore the ability to decrypt cached tokens —
+  survives process restarts predictably.
+- **Client-credential storage**: no code change — `Microsoft.Identity.Web`
+  already supports certificate-based credentials via `AzureAd:ClientCertificates`
+  configuration alone. Documented as the recommended production mechanism
+  instead of `AzureAd:ClientSecret`.
+- **Open item, not implemented**: production *external* protection of the
+  Data Protection key ring (the framework already warns "No XML encryptor
+  configured... may be persisted to storage in unencrypted form" when only
+  `PersistKeysToFileSystem` is used). POC-PLAN.md Section 12 suggests Azure
+  Key Vault, but CLAUDE.md already notes Autom does not host on Azure — so
+  this needs a decision grounded in Autom's actual secret-management
+  infrastructure before production, not a default Key Vault implementation.
+- **Tests**: `tests/TeamsIntegration.Api.Tests/` gained
+  `RedisDistributedCacheTests.cs` (Testcontainers.Redis — a real Redis
+  container, round-tripping a cache value through the exact
+  `AddStackExchangeRedisCache` registration used in `Program.cs`) and
+  `DataProtectionTests.cs` (protect/unprotect round-trip against a temp key
+  ring, plus a DI check that `MsalDistributedTokenCacheAdapterOptions.Encrypt`
+  is `true`). All 16 tests (12 from Task 4 + 4 new) pass; `dotnet build` is
+  clean. Docker Desktop must be running locally for the Redis-backed tests.
+
+This task does not touch host-context authorization, the Task 4 Mongo/Graph
+code, or `needsReconnect` detection (Task 6).
