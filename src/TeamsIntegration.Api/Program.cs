@@ -1,6 +1,11 @@
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.Extensions.Options;
 using Microsoft.Identity.Web;
+using MongoDB.Driver;
+using TeamsIntegration.Api.Configuration;
+using TeamsIntegration.Api.Models;
+using TeamsIntegration.Api.Repositories;
 using TeamsIntegration.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -36,6 +41,23 @@ builder.Services.AddSwaggerGen(options =>
             + "Swagger sends the resulting same-origin secure session cookie automatically."
     });
 });
+
+builder.Services.Configure<MongoOptions>(builder.Configuration.GetSection("Mongo"));
+builder.Services.AddSingleton<IMongoClient>(sp =>
+    new MongoClient(sp.GetRequiredService<IOptions<MongoOptions>>().Value.ConnectionString));
+builder.Services.AddSingleton(sp =>
+{
+    var options = sp.GetRequiredService<IOptions<MongoOptions>>().Value;
+    return sp.GetRequiredService<IMongoClient>().GetDatabase(options.DatabaseName);
+});
+builder.Services.AddSingleton(sp =>
+{
+    var options = sp.GetRequiredService<IOptions<MongoOptions>>().Value;
+    return sp.GetRequiredService<IMongoDatabase>()
+        .GetCollection<TeamsConfiguration>(options.ConfigurationsCollectionName);
+});
+builder.Services.AddScoped<ITeamsConfigurationRepository, MongoTeamsConfigurationRepository>();
+builder.Services.AddScoped<ITeamsConfigurationService, TeamsConfigurationService>();
 
 var app = builder.Build();
 

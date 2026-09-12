@@ -21,7 +21,8 @@ public interface ITeamsGraphService
 
 public sealed class TeamsGraphService(
     HttpClient httpClient,
-    ITokenAcquisition tokenAcquisition) : ITeamsGraphService
+    ITokenAcquisition tokenAcquisition,
+    ILogger<TeamsGraphService> logger) : ITeamsGraphService
 {
     public static readonly string[] RequiredScopes =
     [
@@ -114,12 +115,20 @@ public sealed class TeamsGraphService(
                 "Microsoft Teams access needs reconnecting.");
         }
 
+        var clientRequestId = Guid.NewGuid().ToString();
         using var request = new HttpRequestMessage(method, path);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        request.Headers.Add("client-request-id", clientRequestId);
         if (payload is not null)
         {
             request.Content = JsonContent.Create(payload, options: JsonOptions);
         }
+
+        logger.LogInformation(
+            "Sending Microsoft Graph {Method} {Path} with client-request-id {ClientRequestId}",
+            method,
+            path,
+            clientRequestId);
 
         var response = await httpClient.SendAsync(request, cancellationToken);
         if (response.IsSuccessStatusCode)
@@ -128,6 +137,7 @@ public sealed class TeamsGraphService(
         }
 
         var statusCode = (int)response.StatusCode;
+        var retryAfter = response.Headers.RetryAfter?.ToString();
         response.Dispose();
         throw new TeamsGraphException(
             statusCode switch
@@ -139,7 +149,10 @@ public sealed class TeamsGraphService(
                 _ when statusCode >= 500 => StatusCodes.Status503ServiceUnavailable,
                 _ => StatusCodes.Status502BadGateway
             },
-            "Microsoft Graph could not complete the request.");
+            "Microsoft Graph could not complete the request.")
+        {
+            RetryAfter = retryAfter
+        };
     }
 
     private static async Task<T> ReadJsonAsync<T>(HttpResponseMessage response, CancellationToken cancellationToken)

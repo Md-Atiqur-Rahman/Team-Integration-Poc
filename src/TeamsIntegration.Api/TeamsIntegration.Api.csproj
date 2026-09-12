@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Identity.Web" Version="4.14.2" />
+    <PackageReference Include="MongoDB.Driver" Version="3.11.2" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="10.2.3" />
   </ItemGroup>
 

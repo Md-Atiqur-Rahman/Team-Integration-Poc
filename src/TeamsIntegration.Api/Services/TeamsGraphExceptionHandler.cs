@@ -6,6 +6,8 @@ namespace TeamsIntegration.Api.Services;
 public sealed class TeamsGraphException(int statusCode, string detail) : Exception(detail)
 {
     public int StatusCode { get; } = statusCode;
+
+    public string? RetryAfter { get; init; }
 }
 
 public static class TeamsGraphExceptionHandler
@@ -24,6 +26,12 @@ public static class TeamsGraphExceptionHandler
         }
 
         context.Response.StatusCode = graphException.StatusCode;
+        if (graphException.StatusCode == StatusCodes.Status429TooManyRequests
+            && !string.IsNullOrWhiteSpace(graphException.RetryAfter))
+        {
+            context.Response.Headers.RetryAfter = graphException.RetryAfter;
+        }
+
         return context.Response.WriteAsJsonAsync(new ProblemDetails
         {
             Status = graphException.StatusCode,
