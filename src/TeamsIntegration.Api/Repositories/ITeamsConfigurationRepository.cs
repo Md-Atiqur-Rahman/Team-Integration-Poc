@@ -11,4 +11,11 @@ public interface ITeamsConfigurationRepository
         CancellationToken cancellationToken);
 
     Task<TeamsConfiguration> UpsertAsync(TeamsConfiguration configuration, CancellationToken cancellationToken);
+
+    Task MarkNeedsReconnectAsync(
+        string organizationId,
+        string projectId,
+        string applicationId,
+        string failureCode,
+        CancellationToken cancellationToken);
 }

@@ -65,4 +65,55 @@ public sealed class TeamsConfigurationServiceTests(MongoFixture mongoFixture)
         Assert.Equal(StatusCodes.Status404NotFound, exception.StatusCode);
         Assert.Equal(0, await collection.CountDocumentsAsync(FilterDefinition<TeamsConfiguration>.Empty));
     }
+
+    [Fact]
+    public async Task SaveAsync_marks_an_existing_configuration_needsReconnect_when_graph_requires_reauthentication()
+    {
+        var collection = mongoFixture.CreateEmptyCollection();
+        var repository = new MongoTeamsConfigurationRepository(collection);
+        var graphService = new FakeTeamsGraphService
+        {
+            Teams = [new TeamItem("team-1", "Team One", null, false)],
+            Channels = [new ChannelItem("channel-1", "General", null, "standard", false)]
+        };
+        var service = new TeamsConfigurationService(graphService, repository);
+
+        await service.SaveAsync(
+            "org-4", "proj-4", "app-4", "team-1", "channel-1", "tenant-1", "user-1", CancellationToken.None);
+
+        graphService.ExceptionToThrow = new TeamsGraphException(
+            StatusCodes.Status401Unauthorized,
+            "Microsoft Teams access needs reconnecting.");
+
+        var exception = await Assert.ThrowsAsync<TeamsGraphException>(() => service.SaveAsync(
+            "org-4", "proj-4", "app-4", "team-1", "channel-1", "tenant-1", "user-1", CancellationToken.None));
+
+        Assert.Equal(StatusCodes.Status401Unauthorized, exception.StatusCode);
+
+        var configuration = await repository.GetActiveAsync("org-4", "proj-4", "app-4", CancellationToken.None);
+        Assert.NotNull(configuration);
+        Assert.Equal(TeamsConfigurationStatus.NeedsReconnect, configuration!.ConnectionStatus);
+        Assert.Equal(TeamsGraphException.ReauthenticationRequiredCode, configuration.ConnectionFailureCode);
+        Assert.NotNull(configuration.ConnectionFailureDetectedAtUtc);
+    }
+
+    [Fact]
+    public async Task SaveAsync_saves_nothing_when_graph_requires_reauthentication_on_a_first_time_save()
+    {
+        var collection = mongoFixture.CreateEmptyCollection();
+        var repository = new MongoTeamsConfigurationRepository(collection);
+        var graphService = new FakeTeamsGraphService
+        {
+            ExceptionToThrow = new TeamsGraphException(
+                StatusCodes.Status401Unauthorized,
+                "Microsoft Teams access needs reconnecting.")
+        };
+        var service = new TeamsConfigurationService(graphService, repository);
+
+        var exception = await Assert.ThrowsAsync<TeamsGraphException>(() => service.SaveAsync(
+            "org-5", "proj-5", "app-5", "team-1", "channel-1", "tenant-1", "user-1", CancellationToken.None));
+
+        Assert.Equal(StatusCodes.Status401Unauthorized, exception.StatusCode);
+        Assert.Equal(0, await collection.CountDocumentsAsync(FilterDefinition<TeamsConfiguration>.Empty));
+    }
 }

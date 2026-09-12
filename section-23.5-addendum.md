@@ -139,3 +139,65 @@ with a real distributed cache — no other backend code changed:
 
 This task does not touch host-context authorization, the Task 4 Mongo/Graph
 code, or `needsReconnect` detection (Task 6).
+
+### Task 6 completion record (2026-09-12)
+
+Task 6 (reconnect health) has been implemented. Detection already existed as
+a side effect of the original POC — `TeamsGraphService.SendAsync` already
+caught `MicrosoftIdentityWebChallengeUserException` (MSAL's signal for
+revoked consent, invalid grant, disabled account, Conditional Access,
+interaction-required) and threw `TeamsGraphException(401, ...)`, and `401`
+is used exclusively for this case in the codebase. What this task added is
+persisting that into Mongo and giving the API response a stable code:
+
+- **`TeamsGraphException.ReauthenticationRequiredCode`** (`"reauthentication_required"`)
+  — single source of truth, added as a `const` on `TeamsGraphException`.
+- **`TeamsGraphExceptionHandler.HandleAsync`**: for `401` responses, sets
+  `ProblemDetails.Extensions["code"] = ReauthenticationRequiredCode`, giving
+  Section 13's "return `401` with `reauthentication_required`" a stable,
+  parseable field. Applies to every `401` from `TeamsGraphException`
+  (including `TeamsController`'s pre-existing endpoints), not just the new
+  configuration path.
+- **`ITeamsConfigurationRepository.MarkNeedsReconnectAsync`** /
+  `MongoTeamsConfigurationRepository`: an `UpdateOneAsync` against the
+  existing 3-key compound filter, setting `ConnectionStatus =
+  needsReconnect`, `ConnectionFailureCode`, `ConnectionFailureDetectedAtUtc`,
+  `UpdatedAtUtc`. A safe no-op (`MatchedCount == 0`) when no configuration
+  exists for that key yet.
+- **`TeamsConfigurationService.SaveAsync`**: the two Graph revalidation calls
+  are each wrapped with `catch (TeamsGraphException ex) when (ex.StatusCode
+  == 401)`, calling `MarkNeedsReconnectAsync` then rethrowing — the caller's
+  `401` response is unchanged in shape, just now also persisted and coded.
+  `404` (team/channel not found — Task 4's existing revalidation-failure
+  path) is untouched.
+- **Recovery required no new code**: `SaveAsync`'s existing successful-save
+  path already unconditionally sets `ConnectionStatus = Active` and nulls
+  the failure fields on every successful save, so a user who reconnects and
+  re-saves naturally clears `needsReconnect`.
+
+**Honest scope boundary — read before building on this.** The only place in
+the codebase today that both calls Graph with the user's delegated token
+*and* knows which `{organizationId, projectId, applicationId}` configuration
+it's acting on is `TeamsConfigurationService.SaveAsync` (`PUT
+/api/teams/configuration`). `TeamsController`'s `GetTeams`/`GetChannels`/
+`SendMessage` have no host context at all — replacing them is Task 8 ("send
+through saved configuration"), not built yet — so a Graph failure there
+cannot be attributed to a saved configuration and isn't wired into this
+mechanism. "Prevent delivery" from the Task 6 description is therefore only
+partially realized: this task delivers the detect-and-persist mechanism and
+the `connectionStatus` contract, but there is no send-through-saved-config
+code path yet for it to actually block. **Task 8 must check
+`connectionStatus` before posting once it exists.** `connectionAlertedAtUtc`
+is intentionally left `null` — there's no dashboard (Task 7) or Autom-
+notification integration (Task 9) yet to alert anyone, so stamping a
+timestamp with nothing behind it would be misleading.
+
+- **Tests**: extended `FakeTeamsGraphService` with a settable
+  `ExceptionToThrow`; added two `TeamsConfigurationServiceTests` (marks an
+  existing configuration `needsReconnect` and rethrows; saves nothing on a
+  first-time save that fails the same way), one
+  `TeamsConfigurationRepositoryTests` (`MarkNeedsReconnectAsync` no-ops
+  safely on a missing key), and a new `TeamsGraphExceptionHandlerTests.cs`
+  (constructs a `DefaultHttpContext` directly to verify the `code` extension
+  is present for `401` and absent for other statuses). All 21 tests (16 from
+  Tasks 4/5 + 5 new) pass; `dotnet build` is clean.

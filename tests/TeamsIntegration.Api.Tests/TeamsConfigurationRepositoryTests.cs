@@ -61,6 +61,18 @@ public sealed class TeamsConfigurationRepositoryTests(MongoFixture mongoFixture)
         Assert.Equal(ServerErrorCategory.DuplicateKey, exception.WriteError.Category);
     }
 
+    [Fact]
+    public async Task MarkNeedsReconnectAsync_is_a_safe_no_op_when_no_configuration_exists()
+    {
+        var collection = mongoFixture.CreateEmptyCollection();
+        var repository = new MongoTeamsConfigurationRepository(collection);
+
+        await repository.MarkNeedsReconnectAsync(
+            "missing-org", "missing-proj", "missing-app", "reauthentication_required", CancellationToken.None);
+
+        Assert.Equal(0, await collection.CountDocumentsAsync(FilterDefinition<TeamsConfiguration>.Empty));
+    }
+
     private static TeamsConfiguration NewConfiguration(string organizationId, string projectId, string applicationId) =>
         new()
         {

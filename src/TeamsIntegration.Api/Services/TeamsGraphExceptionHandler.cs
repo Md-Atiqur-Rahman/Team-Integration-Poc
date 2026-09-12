@@ -5,6 +5,8 @@ namespace TeamsIntegration.Api.Services;
 
 public sealed class TeamsGraphException(int statusCode, string detail) : Exception(detail)
 {
+    public const string ReauthenticationRequiredCode = "reauthentication_required";
+
     public int StatusCode { get; } = statusCode;
 
     public string? RetryAfter { get; init; }
@@ -32,13 +34,20 @@ public static class TeamsGraphExceptionHandler
             context.Response.Headers.RetryAfter = graphException.RetryAfter;
         }
 
-        return context.Response.WriteAsJsonAsync(new ProblemDetails
+        var problemDetails = new ProblemDetails
         {
             Status = graphException.StatusCode,
             Title = graphException.StatusCode == StatusCodes.Status401Unauthorized
                 ? "Authentication required"
                 : "Microsoft Graph request failed",
             Detail = graphException.Message
-        });
+        };
+
+        if (graphException.StatusCode == StatusCodes.Status401Unauthorized)
+        {
+            problemDetails.Extensions["code"] = TeamsGraphException.ReauthenticationRequiredCode;
+        }
+
+        return context.Response.WriteAsJsonAsync(problemDetails);
     }
 }

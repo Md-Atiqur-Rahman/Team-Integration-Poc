@@ -57,6 +57,24 @@ public sealed class MongoTeamsConfigurationRepository(IMongoCollection<TeamsConf
         return await collection.FindOneAndUpdateAsync(filter, update, options, cancellationToken);
     }
 
+    public async Task MarkNeedsReconnectAsync(
+        string organizationId,
+        string projectId,
+        string applicationId,
+        string failureCode,
+        CancellationToken cancellationToken)
+    {
+        var filter = BuildKeyFilter(organizationId, projectId, applicationId);
+        var now = DateTime.UtcNow;
+        var update = Builders<TeamsConfiguration>.Update
+            .Set(c => c.ConnectionStatus, TeamsConfigurationStatus.NeedsReconnect)
+            .Set(c => c.ConnectionFailureCode, failureCode)
+            .Set(c => c.ConnectionFailureDetectedAtUtc, now)
+            .Set(c => c.UpdatedAtUtc, now);
+
+        await collection.UpdateOneAsync(filter, update, cancellationToken: cancellationToken);
+    }
+
     private static FilterDefinition<TeamsConfiguration> BuildKeyFilter(
         string organizationId,
         string projectId,

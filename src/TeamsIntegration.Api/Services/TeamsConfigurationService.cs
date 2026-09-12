@@ -18,7 +18,17 @@ public sealed class TeamsConfigurationService(
         string userObjectId,
         CancellationToken cancellationToken)
     {
-        var teams = await teamsGraphService.GetTeamsAsync(cancellationToken);
+        IReadOnlyList<TeamItem> teams;
+        try
+        {
+            teams = await teamsGraphService.GetTeamsAsync(cancellationToken);
+        }
+        catch (TeamsGraphException ex) when (ex.StatusCode == StatusCodes.Status401Unauthorized)
+        {
+            await MarkNeedsReconnectAsync(organizationId, projectId, applicationId, cancellationToken);
+            throw;
+        }
+
         var matchedTeam = teams.FirstOrDefault(team => team.Id == teamId);
         if (matchedTeam is null)
         {
@@ -27,7 +37,17 @@ public sealed class TeamsConfigurationService(
                 "The selected Team is no longer available or accessible.");
         }
 
-        var channels = await teamsGraphService.GetChannelsAsync(teamId, cancellationToken);
+        IReadOnlyList<ChannelItem> channels;
+        try
+        {
+            channels = await teamsGraphService.GetChannelsAsync(teamId, cancellationToken);
+        }
+        catch (TeamsGraphException ex) when (ex.StatusCode == StatusCodes.Status401Unauthorized)
+        {
+            await MarkNeedsReconnectAsync(organizationId, projectId, applicationId, cancellationToken);
+            throw;
+        }
+
         var matchedChannel = channels.FirstOrDefault(channel => channel.Id == channelId);
         if (matchedChannel is null)
         {
@@ -71,6 +91,18 @@ public sealed class TeamsConfigurationService(
 
         return configuration is null ? null : ToDto(configuration);
     }
+
+    private Task MarkNeedsReconnectAsync(
+        string organizationId,
+        string projectId,
+        string applicationId,
+        CancellationToken cancellationToken) =>
+        repository.MarkNeedsReconnectAsync(
+            organizationId,
+            projectId,
+            applicationId,
+            TeamsGraphException.ReauthenticationRequiredCode,
+            cancellationToken);
 
     private static TeamsConfigurationDto ToDto(TeamsConfiguration configuration) => new(
         configuration.OrganizationId,

@@ -9,11 +9,15 @@ public sealed class FakeTeamsGraphService : ITeamsGraphService
 
     public IReadOnlyList<ChannelItem> Channels { get; set; } = [];
 
+    public Exception? ExceptionToThrow { get; set; }
+
     public Task<IReadOnlyList<TeamItem>> GetTeamsAsync(CancellationToken cancellationToken) =>
-        Task.FromResult(Teams);
+        ExceptionToThrow is not null ? Task.FromException<IReadOnlyList<TeamItem>>(ExceptionToThrow) : Task.FromResult(Teams);
 
     public Task<IReadOnlyList<ChannelItem>> GetChannelsAsync(string teamId, CancellationToken cancellationToken) =>
-        Task.FromResult(Channels);
+        ExceptionToThrow is not null
+            ? Task.FromException<IReadOnlyList<ChannelItem>>(ExceptionToThrow)
+            : Task.FromResult(Channels);
 
     public Task<SendChannelMessageResponse> SendMessageAsync(
         SendChannelMessageRequest request,
