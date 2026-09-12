@@ -1,0 +1,16 @@
+<header class="page-header">
+  <h1>Microsoft Teams Integration POC</h1>
+  <p>Connect Microsoft Teams and send messages to a selected channel.</p>
+  <p class="host-context">
+    Organization: <strong>{{ store.hostContext().organizationId }}</strong> ·
+    Project: <strong>{{ store.hostContext().projectId }}</strong> ·
+    Application: <strong>{{ store.hostContext().applicationId }}</strong>
+  </p>
+</header>
+
+<app-connection-card />
+
+@if (store.isConnected()) {
+  <app-channel-configuration />
+  <app-send-message />
+}

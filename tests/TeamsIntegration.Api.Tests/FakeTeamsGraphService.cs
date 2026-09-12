@@ -9,10 +9,19 @@ public sealed class FakeTeamsGraphService : ITeamsGraphService
 
     public IReadOnlyList<ChannelItem> Channels { get; set; } = [];
 
+    public SendChannelMessageResponse? SendMessageResponse { get; set; }
+
     public Exception? ExceptionToThrow { get; set; }
 
-    public Task<IReadOnlyList<TeamItem>> GetTeamsAsync(CancellationToken cancellationToken) =>
-        ExceptionToThrow is not null ? Task.FromException<IReadOnlyList<TeamItem>>(ExceptionToThrow) : Task.FromResult(Teams);
+    public int GetTeamsCallCount { get; private set; }
+
+    public Task<IReadOnlyList<TeamItem>> GetTeamsAsync(CancellationToken cancellationToken)
+    {
+        GetTeamsCallCount++;
+        return ExceptionToThrow is not null
+            ? Task.FromException<IReadOnlyList<TeamItem>>(ExceptionToThrow)
+            : Task.FromResult(Teams);
+    }
 
     public Task<IReadOnlyList<ChannelItem>> GetChannelsAsync(string teamId, CancellationToken cancellationToken) =>
         ExceptionToThrow is not null
@@ -22,5 +31,8 @@ public sealed class FakeTeamsGraphService : ITeamsGraphService
     public Task<SendChannelMessageResponse> SendMessageAsync(
         SendChannelMessageRequest request,
         CancellationToken cancellationToken) =>
-        throw new NotSupportedException("Not used by configuration revalidation tests.");
+        ExceptionToThrow is not null
+            ? Task.FromException<SendChannelMessageResponse>(ExceptionToThrow)
+            : Task.FromResult(SendMessageResponse ?? throw new NotSupportedException(
+                "Set SendMessageResponse before calling SendMessageAsync in a test."));
 }

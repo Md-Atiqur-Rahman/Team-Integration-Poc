@@ -1,0 +1,47 @@
+.card {
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin-block-end: 1rem;
+}
+
+.status {
+  font-weight: 600;
+}
+
+.status--loading {
+  color: #667085;
+  font-weight: 400;
+}
+
+.status--connected {
+  color: #027a48;
+}
+
+.status--not-connected {
+  color: #667085;
+}
+
+.status--warning {
+  color: #b54708;
+}
+
+.status--error {
+  color: #b42318;
+  font-weight: 400;
+}
+
+button {
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  border: 1px solid #344054;
+  background: #344054;
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}

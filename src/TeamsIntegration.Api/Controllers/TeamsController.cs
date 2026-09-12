@@ -31,22 +31,4 @@ public sealed class TeamsController(ITeamsGraphService teamsGraphService) : Cont
 
         return Ok(new ChannelsResponse(await teamsGraphService.GetChannelsAsync(teamId, cancellationToken)));
     }
-
-    [HttpPost("messages")]
-    [ProducesResponseType<SendChannelMessageResponse>(StatusCodes.Status201Created)]
-    [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
-    public async Task<ActionResult<SendChannelMessageResponse>> SendMessage(
-        SendChannelMessageRequest request,
-        CancellationToken cancellationToken)
-    {
-        var validationError = GraphInput.Validate(request);
-        if (validationError is not null)
-        {
-            return UnprocessableEntity(new { code = "invalid_message", message = validationError });
-        }
-
-        var result = await teamsGraphService.SendMessageAsync(request, cancellationToken);
-        return Created(result.WebUrl ?? string.Empty, result);
-    }
 }

@@ -1,0 +1,60 @@
+<section class="card" aria-labelledby="configuration-heading">
+  <h2 id="configuration-heading">Team &amp; Channel Configuration</h2>
+
+  @if (store.configurationLoadState() === 'loaded' && store.savedConfiguration(); as configuration) {
+    <p class="active-configuration">
+      Active destination: <strong>{{ configuration.teamName ?? configuration.teamId }}</strong> /
+      <strong>{{ configuration.channelName ?? configuration.channelId }}</strong>
+      <span
+        class="badge"
+        [class.badge--warning]="configuration.connectionStatus === 'needsReconnect'"
+      >
+        {{ configuration.connectionStatus === 'needsReconnect' ? 'Needs reconnect' : 'Active' }}
+      </span>
+    </p>
+  } @else if (store.configurationLoadState() === 'none') {
+    <p class="hint">No Teams configuration is saved for this application yet.</p>
+  }
+
+  <div class="field">
+    <label for="team-select">Select Team</label>
+    <select
+      id="team-select"
+      [disabled]="store.teamsLoading()"
+      (change)="onTeamChange($event)"
+    >
+      <option value="" selected disabled>
+        {{ store.teamsLoading() ? 'Loading teams…' : 'Choose a team' }}
+      </option>
+      @for (team of store.teams(); track team.id) {
+        <option [value]="team.id">{{ team.displayName ?? team.id }}</option>
+      }
+    </select>
+    @if (!store.teamsLoading() && store.teams().length === 0) {
+      <p class="hint">No Teams found. This Microsoft account has no directly joined Teams.</p>
+    }
+  </div>
+
+  <div class="field">
+    <label for="channel-select">Select Channel</label>
+    <select
+      id="channel-select"
+      [disabled]="!store.selectedTeamId() || store.channelsLoading()"
+      (change)="onChannelChange($event)"
+    >
+      <option value="" selected disabled>
+        {{ store.channelsLoading() ? 'Loading channels…' : 'Choose a channel' }}
+      </option>
+      @for (channel of store.channels(); track channel.id) {
+        <option [value]="channel.id">{{ channel.displayName ?? channel.id }}</option>
+      }
+    </select>
+    @if (store.selectedTeamId() && !store.channelsLoading() && store.channels().length === 0) {
+      <p class="hint">No accessible channels found for this Team.</p>
+    }
+  </div>
+
+  <button type="button" [disabled]="!store.canSave()" (click)="save()">
+    {{ store.saveInProgress() ? 'Saving…' : 'Save Configuration' }}
+  </button>
+</section>

@@ -6,6 +6,7 @@ namespace TeamsIntegration.Api.Services;
 public sealed class TeamsGraphException(int statusCode, string detail) : Exception(detail)
 {
     public const string ReauthenticationRequiredCode = "reauthentication_required";
+    public const string StaleConfigurationCode = "stale_configuration";
 
     public int StatusCode { get; } = statusCode;
 
@@ -46,6 +47,10 @@ public static class TeamsGraphExceptionHandler
         if (graphException.StatusCode == StatusCodes.Status401Unauthorized)
         {
             problemDetails.Extensions["code"] = TeamsGraphException.ReauthenticationRequiredCode;
+        }
+        else if (graphException.StatusCode == StatusCodes.Status409Conflict)
+        {
+            problemDetails.Extensions["code"] = TeamsGraphException.StaleConfigurationCode;
         }
 
         return context.Response.WriteAsJsonAsync(problemDetails);

@@ -201,3 +201,155 @@ timestamp with nothing behind it would be misleading.
   (constructs a `DefaultHttpContext` directly to verify the `code` extension
   is present for `401` and absent for other statuses). All 21 tests (16 from
   Tasks 4/5 + 5 new) pass; `dotnet build` is clean.
+
+### Task 7 completion record (2026-09-12)
+
+Task 7 (Angular dashboard) has been implemented at
+`TeamsIntegration.POC/frontend/teams-integration-ui/` (Angular 22,
+standalone components, no Router — a single dashboard view per Section 9 —
+no Angular Material/CDK, zoneless by CLI default). Per the two choices made
+before implementing: host context (`organizationId`/`projectId`/
+`applicationId`) comes from **URL query params with an environment-config
+default** (`readHostContextFromUrl()` in `teams-dashboard.store.ts`), and
+**Send Message was deferred to Task 8** — not built here, since its real
+endpoint (send through the saved configuration) doesn't exist yet.
+
+**Required backend fixes** (small, additive, justified by POC-PLAN.md
+Section 8's already-documented target contract — not new scope):
+
+- `AuthController.GetSession` was `[Authorize]`, so an anonymous call
+  produced a `302` redirect to the Microsoft login page — unusable for a
+  `fetch()`-based SPA. Changed to `[AllowAnonymous]` with a manual
+  `User.Identity?.IsAuthenticated` check, always returning `200
+  { isAuthenticated, isTeamsConnected, displayName }`. `isTeamsConnected` is
+  currently just an alias for `isAuthenticated` (no separate Graph-token
+  probe exists to distinguish them — documented simplification).
+  **`AuthenticationEndpointTests.Session_redirects_anonymous_users_to_sign_in`
+  was rewritten** to `Session_returns_not_authenticated_for_anonymous_users`
+  (asserts `200`, not `302`) — the old test validated the POC's
+  pre-Section-8-contract behavior, not a decision worth preserving.
+- `AuthController.Connect` now accepts an optional `returnUrl` query
+  parameter (so the host-context query string survives the OAuth round
+  trip) validated by origin against the new `Frontend:BaseUrl` config value
+  (`Configuration/FrontendOptions.cs`) before use — no arbitrary
+  caller-supplied redirect target is trusted (open-redirect guard).
+- **CORS**: `AddCors`/`UseCors` added, restricted to the single configured
+  `Frontend:BaseUrl` origin with `AllowCredentials()` (required for the
+  session cookie to flow cross-origin in local dev — Angular on
+  `localhost:4200`, API on `localhost:7059`). No wildcard origin.
+  `appsettings.json` gained `"Frontend": { "BaseUrl": "http://localhost:4200" }`,
+  reused for both the CORS origin and the default OAuth return URL.
+  **Post-implementation fix (2026-09-13)**: this value is now
+  `https://localhost:4200`, and `angular.json`'s `serve` target defaults to
+  `"ssl": true`. You found in real testing that a successful sign-in still
+  showed "Not Connected" — root cause was that the session cookie is
+  `Secure` + `SameSite=Lax`, and browsers classify cookie "site" by scheme
+  as well as domain, so `http://localhost:4200` and `https://localhost:7059`
+  were cross-site despite both being "localhost": the cookie set correctly
+  during the OAuth top-level-navigation callback, but was withheld on
+  Angular's subsequent `fetch()` to `/api/auth/session`. Serving Angular
+  over HTTPS too (same scheme, same registrable domain — port doesn't
+  matter for "site") fixed it without weakening `SameSite` to `None`.
+
+**Frontend structure**: `core/api-client/teams-api.client.ts` (HttpClient
+wrapper + `parseApiError`, which normalizes both existing backend error
+shapes — `{code, message}` and `ProblemDetails` with `Extensions["code"]` —
+since both serialize as flat JSON with `code` at the top level);
+`core/interceptors/` (`withCredentialsInterceptor`,
+`reauthenticationInterceptor` — the latter injects the store directly and
+flips a shared `needsReconnect` signal on any `401
+reauthentication_required`, from *any* endpoint, not just the configuration
+save); `features/teams-dashboard/teams-dashboard.store.ts` (signal-based
+state, injected directly by each feature component rather than
+prop-drilled — reasonable for a 3-component single-feature app); `connection-card.ts`
+and `channel-configuration.ts` (each inject the store directly, matching the
+Section 9 state table minus the Send-Message-only rows).
+
+**Tests**: Angular CLI 22's default scaffold turned out to be
+**Vitest**-based (`@angular/build:unit-test`), not Karma — confirmed at
+scaffold time, no separate tooling decision needed. 12 tests across 4 files
+(`app.spec.ts`, `teams-dashboard.store.spec.ts`,
+`channel-configuration.spec.ts`, `connection-card.spec.ts`) — covering
+store data flow, the Save-button disable rule, connected/reconnect
+rendering, `Connect` triggering `window.location.assign` (not an XHR — the
+whole point of the BFF design), a live automated check that a full
+connected session load never writes to `localStorage`/`sessionStorage`, and
+the `reauthentication_required` interceptor path. Two test-authoring
+gotchas resolved during implementation (both fixed, not worked around):
+`vi.spyOn(window.location, 'assign')` fails in this jsdom version
+("Cannot redefine property") — fixed via `vi.stubGlobal('location', {...})`;
+flushing multiple sequential `HttpTestingController` requests inside one
+`Promise.all`-driven flow needs a microtask-queue drain
+(`await new Promise(resolve => setTimeout(resolve, 0))`) between flushes,
+since a promise continuation after an `await` doesn't resume synchronously
+with `httpMock.flush()`.
+
+**npm install note**: the initial `ng new` + npm install failed with a
+known npm/arborist bug (`Cannot read properties of null (reading
+'edgesOut')`) triggered by Vitest 4's optional peer dependencies on this
+npm version (10.9.8); worked around with `npm install --legacy-peer-deps`.
+
+All 21 backend tests and 12 frontend tests pass; `dotnet build` and
+`ng build` are both clean. Manual interactive Entra sign-in verification
+(real browser OAuth flow) was left for you to run, since it isn't
+automatable from here.
+
+### Task 8 completion record (2026-09-13)
+
+Task 8 (send through saved configuration) has been implemented. Per your
+two choices: host context is passed as **query params** on `POST
+/api/teams/messages` (body stays `{content}` only, matching POC-PLAN.md
+Section 8's documented shape exactly), and the old raw
+`{teamId, channelId, content}` `POST /api/teams/messages` action was
+**replaced in place** in `TeamsController.cs` (removed entirely, along with
+its now-orphaned `GraphInput.Validate(SendChannelMessageRequest)` — replaced
+by a lighter `GraphInput.ValidateMessageContent(string?)`).
+
+- **New `Services/TeamsMessageService.cs`**, mirroring
+  `TeamsConfigurationService`'s existing shape: checks
+  `configuration.ConnectionStatus == needsReconnect` first (the literal
+  instruction Task 6 left behind — no wasted Graph call when already known
+  broken), then **always** revalidates the saved team/channel against Graph
+  before sending (not only when the cached status looks stale — Section 8:
+  "validate/refresh... before posting"), reusing
+  `ITeamsGraphService.GetTeamsAsync`/`GetChannelsAsync`/`SendMessageAsync`
+  verbatim — no new Graph calls. A revalidation failure (team/channel gone)
+  returns `409 stale_configuration` (new `TeamsGraphException.StaleConfigurationCode`,
+  same `Extensions["code"]` pattern Task 6 established for `401`) without
+  touching Mongo. A `401` from Graph during revalidation or the send itself
+  calls `MarkNeedsReconnectAsync` (Task 6's existing repository method,
+  reused verbatim) before rethrowing.
+- **Known gap, flagged not papered over**: `TeamsConfiguration.ConnectionStatus`
+  is still only `active`/`needsReconnect` (Task 4's schema) — there's no
+  third enum value for "resource gone but connection otherwise fine," so the
+  `409 stale_configuration` case is reported to the caller but not persisted
+  to Mongo. Adding a schema value was judged out of this task's scope.
+- **New `Controllers/TeamsMessagesController.cs`** (route
+  `api/teams/messages`) validates host-context IDs and content, calls the
+  **existing** `ITeamsConfigurationService.GetActiveAsync` (Task 4) for the
+  `404 configuration_not_found` case — no new lookup logic, full reuse.
+- **Frontend**: `send-message.ts`/`.html`/`.css` (same
+  inject-the-store-directly pattern as the other dashboard components),
+  wired into `teams-dashboard.html` alongside `channel-configuration`. Store
+  gained `messageContent`/`sendInProgress`/`lastSentMessage` signals and a
+  `sendMessage()` method. A live `401 reauthentication_required` from this
+  endpoint is already caught by Task 7's global `reauthenticationInterceptor`
+  with zero new wiring — confirms that interceptor being global (not scoped
+  to the configuration save flow) was the right call.
+- **Tests**: `TeamsMessageServiceTests.cs` (5 tests: success; blocked with
+  zero Graph calls when `needsReconnect`; `409` when the team is gone;
+  `409` when the channel is gone; `401` + Mongo flips to `needsReconnect`
+  during revalidation) using the same `MongoFixture`/`FakeTeamsGraphService`
+  pattern as Tasks 4/6 — `FakeTeamsGraphService` extended with a settable
+  `SendMessageResponse` and a `GetTeamsCallCount` counter.
+  `GraphInputTests.cs`'s 3 tests were rewritten against the new
+  `ValidateMessageContent` (the method they tested no longer exists, since
+  its only caller was removed per your answer — not a regression).
+  `send-message.spec.ts` (4 tests): button disable rules, textarea-clears-
+  and-shows-link on success. All 26 backend tests (21 + 5 new) and 16
+  frontend tests (12 + 4 new) pass; `dotnet build` and `ng build` are both
+  clean.
+
+Manual verification (real Teams channel, real Entra session) — sending a
+message and confirming a `409` when the saved destination becomes
+inaccessible — was left for you to run.

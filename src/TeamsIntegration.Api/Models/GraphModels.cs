@@ -25,24 +25,14 @@ public static class GraphInput
     public static bool IsValidIdentifier(string? value) =>
         !string.IsNullOrWhiteSpace(value) && value.Length <= MaximumIdentifierLength;
 
-    public static string? Validate(SendChannelMessageRequest request)
+    public static string? ValidateMessageContent(string? content)
     {
-        if (!IsValidIdentifier(request.TeamId))
-        {
-            return "Team ID is required and must not exceed 512 characters.";
-        }
-
-        if (!IsValidIdentifier(request.ChannelId))
-        {
-            return "Channel ID is required and must not exceed 512 characters.";
-        }
-
-        if (string.IsNullOrWhiteSpace(request.Content))
+        if (string.IsNullOrWhiteSpace(content))
         {
             return "Message content is required.";
         }
 
-        return request.Content.Length > MaximumMessageLength
+        return content.Length > MaximumMessageLength
             ? "Message content must not exceed 4000 characters."
             : null;
     }

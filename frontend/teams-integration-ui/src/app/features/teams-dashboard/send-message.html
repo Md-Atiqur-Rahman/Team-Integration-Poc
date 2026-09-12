@@ -1,0 +1,33 @@
+<section class="card" aria-labelledby="send-message-heading">
+  <h2 id="send-message-heading">Send Message</h2>
+
+  @if (store.savedConfiguration(); as configuration) {
+    <p class="hint">
+      Sending to <strong>{{ configuration.teamName ?? configuration.teamId }}</strong> /
+      <strong>{{ configuration.channelName ?? configuration.channelId }}</strong>
+    </p>
+  } @else {
+    <p class="hint">Save a Team and channel configuration above before sending a message.</p>
+  }
+
+  <label for="message-content">Message</label>
+  <textarea
+    id="message-content"
+    rows="4"
+    [value]="store.messageContent()"
+    (input)="onContentChange($event)"
+  ></textarea>
+
+  <button type="button" [disabled]="!store.canSendMessage()" (click)="send()">
+    {{ store.sendInProgress() ? 'Sending…' : 'Send Message' }}
+  </button>
+
+  @if (store.lastSentMessage(); as sent) {
+    <p class="status status--connected" role="status">
+      Message sent.
+      @if (sent.webUrl) {
+        <a [href]="sent.webUrl" target="_blank" rel="noopener noreferrer">View in Teams</a>
+      }
+    </p>
+  }
+</section>

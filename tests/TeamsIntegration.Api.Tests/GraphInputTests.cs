@@ -8,31 +8,25 @@ public sealed class GraphInputTests
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    public void Validate_rejects_empty_message_content(string? content)
+    public void ValidateMessageContent_rejects_empty_content(string? content)
     {
-        var result = GraphInput.Validate(new SendChannelMessageRequest("team", "channel", content));
+        var result = GraphInput.ValidateMessageContent(content);
 
         Assert.Equal("Message content is required.", result);
     }
 
     [Fact]
-    public void Validate_rejects_message_content_over_limit()
+    public void ValidateMessageContent_rejects_content_over_limit()
     {
-        var result = GraphInput.Validate(new SendChannelMessageRequest(
-            "team",
-            "channel",
-            new string('a', GraphInput.MaximumMessageLength + 1)));
+        var result = GraphInput.ValidateMessageContent(new string('a', GraphInput.MaximumMessageLength + 1));
 
         Assert.Equal("Message content must not exceed 4000 characters.", result);
     }
 
     [Fact]
-    public void Validate_accepts_a_bounded_message_with_graph_identifiers()
+    public void ValidateMessageContent_accepts_a_bounded_message()
     {
-        var result = GraphInput.Validate(new SendChannelMessageRequest(
-            "19:team@thread.tacv2",
-            "19:channel@thread.tacv2",
-            "POC message"));
+        var result = GraphInput.ValidateMessageContent("POC message");
 
         Assert.Null(result);
     }

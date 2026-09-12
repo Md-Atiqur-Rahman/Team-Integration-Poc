@@ -1,0 +1,55 @@
+.card {
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin-block-start: 1rem;
+}
+
+.hint {
+  color: #667085;
+  font-size: 0.85rem;
+}
+
+label {
+  display: block;
+  font-weight: 600;
+  font-size: 0.9rem;
+  margin-block-end: 0.25rem;
+}
+
+textarea {
+  width: 100%;
+  max-width: 32rem;
+  padding: 0.5rem;
+  border-radius: 6px;
+  border: 1px solid #d0d5dd;
+  font-family: inherit;
+  font-size: 0.9rem;
+  display: block;
+  margin-block-end: 0.75rem;
+  box-sizing: border-box;
+}
+
+.status--connected {
+  color: #027a48;
+  font-size: 0.9rem;
+}
+
+.status--connected a {
+  margin-inline-start: 0.5rem;
+}
+
+button {
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  border: 1px solid #344054;
+  background: #344054;
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}

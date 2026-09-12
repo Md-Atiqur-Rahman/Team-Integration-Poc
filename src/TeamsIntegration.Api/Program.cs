@@ -52,6 +52,17 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 
+builder.Services.Configure<FrontendOptions>(builder.Configuration.GetSection("Frontend"));
+var frontendBaseUrl = builder.Configuration["Frontend:BaseUrl"] ?? string.Empty;
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("Dashboard", policy => policy
+        .WithOrigins(frontendBaseUrl)
+        .AllowCredentials()
+        .AllowAnyHeader()
+        .AllowAnyMethod());
+});
+
 builder.Services.Configure<MongoOptions>(builder.Configuration.GetSection("Mongo"));
 builder.Services.AddSingleton<IMongoClient>(sp =>
     new MongoClient(sp.GetRequiredService<IOptions<MongoOptions>>().Value.ConnectionString));
@@ -68,6 +79,7 @@ builder.Services.AddSingleton(sp =>
 });
 builder.Services.AddScoped<ITeamsConfigurationRepository, MongoTeamsConfigurationRepository>();
 builder.Services.AddScoped<ITeamsConfigurationService, TeamsConfigurationService>();
+builder.Services.AddScoped<ITeamsMessageService, TeamsMessageService>();
 
 var app = builder.Build();
 
@@ -77,6 +89,8 @@ app.UseHttpsRedirection();
 
 app.UseSwagger();
 app.UseSwaggerUI();
+
+app.UseCors("Dashboard");
 
 app.UseAuthentication();
 app.UseAuthorization();

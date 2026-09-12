@@ -1,0 +1,28 @@
+<section class="card" aria-labelledby="connection-heading">
+  <h2 id="connection-heading">Microsoft Teams Connection</h2>
+
+  @if (store.session(); as session) {
+    @if (session === 'loading') {
+      <p class="status status--loading">Checking connection status…</p>
+    } @else if (store.needsReconnect()) {
+      <p class="status status--warning" role="alert">
+        Teams connection needs reconnecting. Notifications for this application are paused.
+      </p>
+      <button type="button" (click)="connect()">Reconnect</button>
+    } @else if (session.isTeamsConnected) {
+      <p class="status status--connected">
+        Connected
+        @if (session.displayName) {
+          <span> as {{ session.displayName }}</span>
+        }
+      </p>
+    } @else {
+      <p class="status status--not-connected">Not Connected</p>
+      <button type="button" (click)="connect()">Connect Microsoft Teams</button>
+    }
+  }
+
+  @if (store.errorMessage()) {
+    <p class="status status--error" role="alert">{{ store.errorMessage() }}</p>
+  }
+</section>

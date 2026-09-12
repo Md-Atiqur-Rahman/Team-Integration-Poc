@@ -1,3 +1,4 @@
+using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace TeamsIntegration.Api.Tests;
@@ -6,7 +7,7 @@ public sealed class AuthenticationEndpointTests(WebApplicationFactory<Program> f
     : IClassFixture<WebApplicationFactory<Program>>
 {
     [Fact]
-    public async Task Session_redirects_anonymous_users_to_sign_in()
+    public async Task Session_returns_not_authenticated_for_anonymous_users()
     {
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
         {
@@ -16,7 +17,13 @@ public sealed class AuthenticationEndpointTests(WebApplicationFactory<Program> f
 
         var response = await client.GetAsync("/api/auth/session");
 
-        Assert.Equal(System.Net.HttpStatusCode.Found, response.StatusCode);
-        Assert.NotNull(response.Headers.Location);
+        Assert.Equal(System.Net.HttpStatusCode.OK, response.StatusCode);
+        var session = await response.Content.ReadFromJsonAsync<SessionStatus>();
+        Assert.NotNull(session);
+        Assert.False(session!.IsAuthenticated);
+        Assert.False(session.IsTeamsConnected);
+        Assert.Null(session.DisplayName);
     }
+
+    private sealed record SessionStatus(bool IsAuthenticated, bool IsTeamsConnected, string? DisplayName);
 }
