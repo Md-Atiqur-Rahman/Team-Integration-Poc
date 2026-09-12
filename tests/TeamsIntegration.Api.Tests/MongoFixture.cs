@@ -22,6 +22,12 @@ public sealed class MongoFixture : IDisposable
         return database.GetCollection<TeamsConfiguration>(Guid.NewGuid().ToString("N"));
     }
 
+    public IMongoCollection<DemoUser> CreateEmptyDemoUsersCollection()
+    {
+        var database = Client.GetDatabase("teams_integration_tests");
+        return database.GetCollection<DemoUser>(Guid.NewGuid().ToString("N"));
+    }
+
     public void Dispose() => _runner.Dispose();
 }
 

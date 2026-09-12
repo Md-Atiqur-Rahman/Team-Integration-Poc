@@ -1,0 +1,24 @@
+<main class="auth-page">
+  <app-autom-header />
+
+  <section class="auth-card">
+    <button type="button" class="back-link" (click)="back()">← Back</button>
+
+    <span class="projects-label">Projects</span>
+    <input
+      class="project-search"
+      type="search"
+      placeholder="Find project"
+      [value]="query()"
+      (input)="onQueryChange($event)"
+    />
+
+    @if (isVisible()) {
+      <button type="button" class="project-row" (click)="select()">
+        {{ projectId() }}
+      </button>
+    } @else {
+      <p class="subtitle">No projects match "{{ query() }}".</p>
+    }
+  </section>
+</main>

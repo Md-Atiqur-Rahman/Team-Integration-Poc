@@ -11,3 +11,8 @@ export const DEFAULT_HOST_CONTEXT: HostContext = {
   projectId: 'demo-project',
   applicationId: 'demo-application',
 };
+
+/** True once the demo login has placed host context in the URL (or it was linked/bookmarked directly). */
+export function hasHostContextInUrl(): boolean {
+  return new URLSearchParams(window.location.search).has('organizationId');
+}

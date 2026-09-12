@@ -81,6 +81,10 @@ builder.Services.AddScoped<ITeamsConfigurationRepository, MongoTeamsConfiguratio
 builder.Services.AddScoped<ITeamsConfigurationService, TeamsConfigurationService>();
 builder.Services.AddScoped<ITeamsMessageService, TeamsMessageService>();
 
+builder.Services.AddSingleton(sp =>
+    sp.GetRequiredService<IMongoDatabase>().GetCollection<DemoUser>("DemoUsers"));
+builder.Services.AddScoped<IDemoAuthService, DemoAuthService>();
+
 var app = builder.Build();
 
 app.UseExceptionHandler(errorApp => errorApp.Run(TeamsGraphExceptionHandler.HandleAsync));

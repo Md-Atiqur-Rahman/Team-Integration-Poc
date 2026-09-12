@@ -7,6 +7,7 @@ import { TeamsConfigurationDto } from '../../core/models/teams-configuration.mod
 import { SendMessageResponse } from '../../core/models/send-message.model';
 
 type ConfigurationLoadState = 'loading' | 'loaded' | 'none' | 'error';
+type ViewMode = 'loading' | 'configure' | 'send';
 
 @Injectable({ providedIn: 'root' })
 export class TeamsDashboardStore {
@@ -26,6 +27,7 @@ export class TeamsDashboardStore {
 
   readonly configurationLoadState = signal<ConfigurationLoadState>('loading');
   readonly savedConfiguration = signal<TeamsConfigurationDto | null>(null);
+  readonly viewMode = signal<ViewMode>('loading');
 
   readonly saveInProgress = signal(false);
   readonly needsReconnect = signal(false);
@@ -110,6 +112,7 @@ export class TeamsDashboardStore {
       const configuration = await this.api.getConfiguration(this.hostContext());
       this.savedConfiguration.set(configuration);
       this.configurationLoadState.set(configuration ? 'loaded' : 'none');
+      this.viewMode.set(configuration ? 'send' : 'configure');
       if (configuration?.connectionStatus === 'needsReconnect') {
         this.needsReconnect.set(true);
       }
@@ -137,11 +140,32 @@ export class TeamsDashboardStore {
       this.savedConfiguration.set(configuration);
       this.configurationLoadState.set('loaded');
       this.needsReconnect.set(false);
+      this.viewMode.set('send');
     } catch (error) {
       this.handleApiError(error);
     } finally {
       this.saveInProgress.set(false);
     }
+  }
+
+  editConfiguration(): void {
+    this.viewMode.set('configure');
+    void this.prefillFromSavedConfiguration();
+  }
+
+  private async prefillFromSavedConfiguration(): Promise<void> {
+    const configuration = this.savedConfiguration();
+    if (!configuration) {
+      return;
+    }
+
+    this.selectedTeamId.set(configuration.teamId);
+    await this.loadChannels(configuration.teamId);
+    // Let the newly loaded <option> elements actually render before selecting one — setting
+    // selectedChannelId in the same tick loadChannels() resolves can run before the channel
+    // <select>'s options exist yet, so the native element falls back to its first option.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    this.selectedChannelId.set(configuration.channelId);
   }
 
   async sendMessage(): Promise<void> {

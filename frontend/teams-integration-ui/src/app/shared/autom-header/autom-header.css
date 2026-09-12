@@ -1,0 +1,31 @@
+.autom-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  margin-block-end: 2rem;
+}
+
+.autom-mark {
+  color: #2547d0;
+}
+
+.autom-wordmark {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.autom-name {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #14213d;
+  letter-spacing: 0.02em;
+}
+
+.autom-tagline {
+  font-size: 0.7rem;
+  color: #667085;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}

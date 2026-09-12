@@ -21,6 +21,7 @@
     <select
       id="team-select"
       [disabled]="store.teamsLoading()"
+      [value]="store.selectedTeamId() ?? ''"
       (change)="onTeamChange($event)"
     >
       <option value="" selected disabled>
@@ -40,6 +41,7 @@
     <select
       id="channel-select"
       [disabled]="!store.selectedTeamId() || store.channelsLoading()"
+      [value]="store.selectedChannelId() ?? ''"
       (change)="onChannelChange($event)"
     >
       <option value="" selected disabled>

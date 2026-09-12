@@ -1,3 +1,17 @@
 <main class="app-shell">
-  <app-teams-dashboard />
+  @if (showDashboard) {
+    <app-teams-dashboard />
+  } @else {
+    @switch (flow.step()) {
+      @case ('chooseOrg') {
+        <app-choose-organization />
+      }
+      @case ('chooseProject') {
+        <app-choose-project />
+      }
+      @default {
+        <app-demo-login />
+      }
+    }
+  }
 </main>

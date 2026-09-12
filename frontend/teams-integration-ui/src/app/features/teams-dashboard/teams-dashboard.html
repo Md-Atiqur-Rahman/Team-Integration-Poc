@@ -2,15 +2,28 @@
   <h1>Microsoft Teams Integration POC</h1>
   <p>Connect Microsoft Teams and send messages to a selected channel.</p>
   <p class="host-context">
+    @if (displayName) {
+      Logged in as <strong>{{ displayName }}</strong> ·
+    }
     Organization: <strong>{{ store.hostContext().organizationId }}</strong> ·
     Project: <strong>{{ store.hostContext().projectId }}</strong> ·
     Application: <strong>{{ store.hostContext().applicationId }}</strong>
+    <button type="button" class="link-button" (click)="switchUser()">Switch user</button>
   </p>
 </header>
 
 <app-connection-card />
 
 @if (store.isConnected()) {
-  <app-channel-configuration />
-  <app-send-message />
+  @switch (store.viewMode()) {
+    @case ('configure') {
+      <app-channel-configuration />
+    }
+    @case ('send') {
+      <app-send-message />
+    }
+    @default {
+      <p class="status status--loading">Loading your configuration…</p>
+    }
+  }
 }

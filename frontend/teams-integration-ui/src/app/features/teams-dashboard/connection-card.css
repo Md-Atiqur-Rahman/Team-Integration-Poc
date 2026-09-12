@@ -45,3 +45,14 @@ button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
 }
+
+.link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #175cd3;
+  cursor: pointer;
+  font-size: 0.9rem;
+  text-decoration: underline;
+  margin-inline-start: 0.5rem;
+}

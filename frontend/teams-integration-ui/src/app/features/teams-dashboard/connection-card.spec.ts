@@ -39,6 +39,31 @@ describe('ConnectionCard', () => {
     expect(fixture.nativeElement.querySelector('button')?.textContent).toContain('Reconnect');
   });
 
+  it('shows an Edit link when connected and viewing Send Message, and it switches to configure', () => {
+    store.session.set({ isAuthenticated: true, isTeamsConnected: true, displayName: 'Test User' });
+    store.viewMode.set('send');
+    const fixture = TestBed.createComponent(ConnectionCard);
+    fixture.detectChanges();
+
+    const editButton = Array.from(fixture.nativeElement.querySelectorAll('button')).find(
+      (button) => (button as HTMLButtonElement).textContent?.trim() === 'Edit',
+    ) as HTMLButtonElement | undefined;
+    expect(editButton).toBeTruthy();
+
+    editButton!.click();
+    expect(store.viewMode()).toBe('configure');
+  });
+
+  it('does not show an Edit link while the configuration form is already showing', () => {
+    store.session.set({ isAuthenticated: true, isTeamsConnected: true, displayName: 'Test User' });
+    store.viewMode.set('configure');
+    const fixture = TestBed.createComponent(ConnectionCard);
+    fixture.detectChanges();
+
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).not.toContain('Edit');
+  });
+
   it('Connect navigates the full browser window rather than making an XHR', () => {
     store.session.set({ isAuthenticated: false, isTeamsConnected: false, displayName: null });
     const fixture = TestBed.createComponent(ConnectionCard);

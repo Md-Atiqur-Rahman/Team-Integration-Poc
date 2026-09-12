@@ -12,4 +12,8 @@ export class ConnectionCard {
   protected connect(): void {
     window.location.assign(this.store.connectUrl());
   }
+
+  protected edit(): void {
+    this.store.editConfiguration();
+  }
 }

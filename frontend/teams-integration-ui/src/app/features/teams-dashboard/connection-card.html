@@ -15,6 +15,9 @@
         @if (session.displayName) {
           <span> as {{ session.displayName }}</span>
         }
+        @if (store.viewMode() === 'send') {
+          <button type="button" class="link-button" (click)="edit()">Edit</button>
+        }
       </p>
     } @else {
       <p class="status status--not-connected">Not Connected</p>

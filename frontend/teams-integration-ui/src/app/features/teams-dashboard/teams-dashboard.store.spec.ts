@@ -85,6 +85,74 @@ describe('TeamsDashboardStore', () => {
     expect(store.configurationLoadState()).toBe('loaded');
     expect(store.savedConfiguration()?.teamName).toBe('Team One');
     expect(store.needsReconnect()).toBe(false);
+    expect(store.viewMode()).toBe('send');
+  });
+
+  it('loadConfiguration sets viewMode to configure when none is saved, send when one exists', async () => {
+    const noneLoadPromise = store.loadConfiguration();
+    httpMock
+      .expectOne((req) => req.url.startsWith(`${API_BASE_URL}/api/teams/configuration`))
+      .flush(
+        { code: 'configuration_not_found', message: 'No configuration.' },
+        { status: 404, statusText: 'Not Found' },
+      );
+    await noneLoadPromise;
+    expect(store.viewMode()).toBe('configure');
+
+    const loadedPromise = store.loadConfiguration();
+    httpMock.expectOne((req) => req.url.startsWith(`${API_BASE_URL}/api/teams/configuration`)).flush({
+      organizationId: 'demo-org',
+      projectId: 'demo-project',
+      applicationId: 'demo-application',
+      tenantId: 'tenant-1',
+      userObjectId: 'user-1',
+      teamId: 't1',
+      teamName: 'Team One',
+      channelId: 'c1',
+      channelName: 'General',
+      connectionStatus: 'active',
+      connectionFailureCode: null,
+      connectionFailureDetectedAtUtc: null,
+      connectionAlertedAtUtc: null,
+      createdAtUtc: '2026-01-01T00:00:00Z',
+      updatedAtUtc: '2026-01-01T00:00:00Z',
+    });
+    await loadedPromise;
+    expect(store.viewMode()).toBe('send');
+  });
+
+  it('editConfiguration switches to configure and pre-fills the saved team/channel', async () => {
+    store.savedConfiguration.set({
+      organizationId: 'demo-org',
+      projectId: 'demo-project',
+      applicationId: 'demo-application',
+      tenantId: 'tenant-1',
+      userObjectId: 'user-1',
+      teamId: 't1',
+      teamName: 'Team One',
+      channelId: 'c1',
+      channelName: 'General',
+      connectionStatus: 'active',
+      connectionFailureCode: null,
+      connectionFailureDetectedAtUtc: null,
+      connectionAlertedAtUtc: null,
+      createdAtUtc: '2026-01-01T00:00:00Z',
+      updatedAtUtc: '2026-01-01T00:00:00Z',
+    });
+
+    store.editConfiguration();
+    expect(store.viewMode()).toBe('configure');
+    expect(store.selectedTeamId()).toBe('t1');
+
+    httpMock.expectOne(`${API_BASE_URL}/api/teams/t1/channels`).flush({
+      items: [{ id: 'c1', displayName: 'General', description: null, membershipType: null, isArchived: false }],
+    });
+    // Two ticks: one for loadChannels()'s own resolution, one for the store's deliberate
+    // extra setTimeout(0) that lets the <option> elements render before selecting one.
+    await flushMicrotasks();
+    await flushMicrotasks();
+
+    expect(store.selectedChannelId()).toBe('c1');
   });
 
   it('never writes to localStorage or sessionStorage during a full connected session load', async () => {

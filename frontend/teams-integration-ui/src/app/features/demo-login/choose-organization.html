@@ -1,0 +1,17 @@
+<main class="auth-page">
+  <app-autom-header />
+
+  <section class="auth-card">
+    <h1>Choose an organization</h1>
+    <p class="subtitle">Select the organization you'd like to work in.</p>
+
+    <button type="button" class="org-row" (click)="select()">
+      <span class="org-badge">{{ initials() }}</span>
+      <span class="org-details">
+        <span class="org-name">{{ organizationId() }}</span>
+        <span class="org-meta">1 project assigned</span>
+      </span>
+      <span class="org-arrow" aria-hidden="true">→</span>
+    </button>
+  </section>
+</main>

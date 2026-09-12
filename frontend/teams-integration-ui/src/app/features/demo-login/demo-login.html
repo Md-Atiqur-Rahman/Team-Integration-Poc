@@ -1,0 +1,37 @@
+<main class="auth-page">
+  <app-autom-header />
+
+  <section class="auth-card">
+    <h1>Sign in</h1>
+    <p class="subtitle">Use your work account to reach your organizations.</p>
+
+    <form (submit)="$event.preventDefault(); login()">
+      <label for="email">Work email</label>
+      <input
+        id="email"
+        type="email"
+        autocomplete="username"
+        [value]="email()"
+        (input)="email.set($any($event.target).value)"
+      />
+
+      <label for="password">Password</label>
+      <input
+        id="password"
+        type="password"
+        autocomplete="current-password"
+        [value]="password()"
+        (input)="password.set($any($event.target).value)"
+      />
+
+      <button type="submit" class="primary-button" [disabled]="!canSubmit()">
+        <span aria-hidden="true">→</span>
+        {{ loginInProgress() ? 'Signing in…' : 'Sign in' }}
+      </button>
+
+      @if (errorMessage()) {
+        <p class="error" role="alert">{{ errorMessage() }}</p>
+      }
+    </form>
+  </section>
+</main>

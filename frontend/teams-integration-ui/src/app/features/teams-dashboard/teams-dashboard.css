@@ -11,3 +11,18 @@
   color: #667085;
   font-size: 0.9rem;
 }
+
+.status--loading {
+  color: #667085;
+}
+
+.link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #175cd3;
+  cursor: pointer;
+  font-size: 0.9rem;
+  text-decoration: underline;
+  margin-inline-start: 0.25rem;
+}

@@ -12,8 +12,13 @@ import { TeamsDashboardStore } from './teams-dashboard.store';
 })
 export class TeamsDashboard implements OnInit {
   protected readonly store = inject(TeamsDashboardStore);
+  protected readonly displayName = new URLSearchParams(window.location.search).get('displayName');
 
   ngOnInit(): void {
     void this.store.initialize();
+  }
+
+  protected switchUser(): void {
+    window.location.assign(`${window.location.origin}${window.location.pathname}`);
   }
 }
