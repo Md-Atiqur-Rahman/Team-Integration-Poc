@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Teams Connection Internals</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+  :root {
+    --paper: #f4f6f5;
+    --paper-raised: #ffffff;
+    --ink: #1c2321;
+    --ink-dim: #55605c;
+    --ink-faint: #7c8783;
+    --line: #d9dedc;
+    --line-strong: #b9c2be;
+    --accent: #1f6f63;
+    --accent-ink: #ffffff;
+    --code-bg: #eaeeec;
+    --warn-bg: #fbf3e4;
+    --warn-border: #c08a2e;
+    --warn-text: #6b4c17;
+
+    --sys-browser: #a06f16;
+    --sys-api: #1f6f63;
+    --sys-mongo: #3f7d3a;
+    --sys-redis: #a3392e;
+    --sys-entra: #2f5aa0;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #14181a;
+      --paper-raised: #1c2124;
+      --ink: #e9ede9;
+      --ink-dim: #a9b3ae;
+      --ink-faint: #7c8783;
+      --line: #323a3c;
+      --line-strong: #454f51;
+      --accent: #58b3a3;
+      --accent-ink: #0c1210;
+      --code-bg: #232a2c;
+      --warn-bg: #2c2510;
+      --warn-border: #c9993f;
+      --warn-text: #e6c07a;
+
+      --sys-browser: #d4a545;
+      --sys-api: #58b3a3;
+      --sys-mongo: #6fbf67;
+      --sys-redis: #e07264;
+      --sys-entra: #7ea3e0;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper: #14181a;
+    --paper-raised: #1c2124;
+    --ink: #e9ede9;
+    --ink-dim: #a9b3ae;
+    --ink-faint: #7c8783;
+    --line: #323a3c;
+    --line-strong: #454f51;
+    --accent: #58b3a3;
+    --accent-ink: #0c1210;
+    --code-bg: #232a2c;
+    --warn-bg: #2c2510;
+    --warn-border: #c9993f;
+    --warn-text: #e6c07a;
+
+    --sys-browser: #d4a545;
+    --sys-api: #58b3a3;
+    --sys-mongo: #6fbf67;
+    --sys-redis: #e07264;
+    --sys-entra: #7ea3e0;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { color-scheme: light dark; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    padding-inline: 20px;
+    padding-block: 40px 80px;
+  }
+
+  main {
+    max-width: 920px;
+    margin-inline: auto;
+  }
+
+  code, .mono {
+    font-family: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+  }
+
+  code {
+    background: var(--code-bg);
+    color: var(--ink);
+    padding: 0.1em 0.4em;
+    border-radius: 4px;
+    font-size: 0.88em;
+  }
+
+  h1, h2, h3 {
+    text-wrap: balance;
+    font-weight: 700;
+  }
+
+  header.masthead {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding-bottom: 28px;
+    margin-bottom: 32px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .eyebrow {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12.5px;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--sys-api);
+    font-weight: 600;
+  }
+
+  h1 {
+    font-size: clamp(28px, 4vw, 38px);
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+
+  .dek {
+    color: var(--ink-dim);
+    font-size: 16.5px;
+    max-width: 62ch;
+    margin: 0;
+  }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 20px;
+    margin-top: 6px;
+  }
+
+  .legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 13.5px;
+    color: var(--ink-dim);
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex: none;
+  }
+
+  .toc {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 8px 20px;
+    background: var(--paper-raised);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 18px 22px;
+    margin-bottom: 44px;
+  }
+
+  .toc a {
+    color: var(--ink);
+    text-decoration: none;
+    font-size: 14.5px;
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+    border-bottom: 1px solid transparent;
+  }
+
+  .toc a:hover { border-bottom-color: var(--accent); }
+
+  .toc .num {
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 13px;
+  }
+
+  section.scene {
+    margin-bottom: 56px;
+    scroll-margin-top: 20px;
+  }
+
+  .scene-head {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    margin-bottom: 4px;
+  }
+
+  .scene-num {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    border-radius: 6px;
+    padding: 2px 9px;
+    flex: none;
+  }
+
+  h2 {
+    font-size: 22px;
+    margin: 0;
+  }
+
+  .scene-sub {
+    color: var(--ink-faint);
+    font-size: 14px;
+    margin: 6px 0 18px;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+
+  .steps {
+    margin: 0 0 22px;
+    padding-left: 0;
+    list-style: none;
+    counter-reset: step;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .steps li {
+    counter-increment: step;
+    position: relative;
+    padding-left: 38px;
+    font-size: 15px;
+    line-height: 1.6;
+    min-height: 22px;
+  }
+
+  .steps li::before {
+    content: counter(step);
+    position: absolute;
+    left: 0;
+    top: 0;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--ink-dim);
+    background: var(--code-bg);
+    border-radius: 50%;
+    width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  figure.diagram {
+    margin: 0 0 10px;
+    background: #ffffff;
+    border: 1px solid var(--line-strong);
+    border-radius: 10px;
+    padding: 18px 18px 6px;
+    overflow-x: auto;
+  }
+
+  figure.diagram .mermaid { color: #1c2321; }
+
+  figcaption {
+    font-size: 13.5px;
+    color: var(--ink-faint);
+    margin-top: 10px;
+    font-style: normal;
+  }
+
+  .callout {
+    border: 1px solid var(--warn-border);
+    background: var(--warn-bg);
+    color: var(--warn-text);
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 14px;
+    margin: 16px 0;
+  }
+
+  .callout strong {
+    font-family: 'IBM Plex Mono', monospace;
+    text-transform: uppercase;
+    font-size: 11.5px;
+    letter-spacing: 0.06em;
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  .key-field {
+    background: color-mix(in srgb, var(--accent) 10%, var(--paper-raised));
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 14px;
+    margin: 16px 0;
+  }
+
+  .key-field strong { color: var(--accent); }
+
+  table.refcard {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+    margin-top: 10px;
+  }
+
+  table.refcard caption {
+    text-align: left;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12.5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 8px;
+  }
+
+  table.refcard th, table.refcard td {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+
+  table.refcard th {
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 600;
+    color: var(--ink-dim);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .ref-wrap { overflow-x: auto; }
+
+  footer.colophon {
+    margin-top: 60px;
+    padding-top: 20px;
+    border-top: 1px solid var(--line);
+    color: var(--ink-faint);
+    font-size: 13px;
+  }
+
+  a { color: var(--accent); }
+
+  @media (max-width: 480px) {
+    .toc { grid-template-columns: 1fr; }
+    .steps li { padding-left: 32px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header class="masthead">
+    <span class="eyebrow">TeamsIntegration.POC — internal reference</span>
+    <h1>Teams Connection Internals</h1>
+    <p class="dek">How org-shared Microsoft Teams connections actually work in the running code, traced endpoint by endpoint, write by write. Built for demo day — every step below was read from the current source, not the plan.</p>
+    <div class="legend" aria-hidden="true">
+      <span class="legend-item"><span class="dot" style="background:var(--sys-browser)"></span>Browser / Angular</span>
+      <span class="legend-item"><span class="dot" style="background:var(--sys-api)"></span>API (ASP.NET Core)</span>
+      <span class="legend-item"><span class="dot" style="background:var(--sys-mongo)"></span>MongoDB</span>
+      <span class="legend-item"><span class="dot" style="background:var(--sys-redis)"></span>Redis (MSAL token cache)</span>
+      <span class="legend-item"><span class="dot" style="background:var(--sys-entra)"></span>Entra ID / Graph</span>
+    </div>
+  </header>
+
+  <nav class="toc" aria-label="Table of contents">
+    <a href="#s1"><span class="num">1</span> First-time login</a>
+    <a href="#s2"><span class="num">2</span> First-time Teams Connect</a>
+    <a href="#s3"><span class="num">3</span> Configure a channel &amp; send</a>
+    <a href="#s4"><span class="num">4</span> Ratan — same org, no OAuth</a>
+    <a href="#s5"><span class="num">5</span> Sabbir — connected, unconfigured</a>
+    <a href="#s6"><span class="num">6</span> Jim — a different org</a>
+    <a href="#s7"><span class="num">7</span> Token lifecycle &amp; reconnect</a>
+  </nav>
+
+  <section class="scene" id="s1">
+    <div class="scene-head"><span class="scene-num">1</span><h2>First-time login — Himel</h2></div>
+    <p class="scene-sub">POST /api/demo/login</p>
+    <ol class="steps">
+      <li>Himel submits <code>himel@demo.autom</code> / <code>Demo@123</code> on the demo login screen. This posts to <code>POST /api/demo/login</code> — <code>DemoAuthController.Login</code>.</li>
+      <li>The controller calls <code>DemoAuthService.ValidateCredentialsAsync</code>. Before checking anything, it re-upserts all five seed users (Himel, Ratan, Sabbir, Anik, Jim) into the <code>DemoUsers</code> collection — idempotent, harmless if they already exist, and self-healing if the collection was ever wiped.</li>
+      <li>It then does a plain <code>Find(u =&gt; u.Email == email)</code> against <code>DemoUsers</code> and compares <code>user.Password == password</code> as plain text. No hashing, no JWT — this is demo-only scaffolding, deliberately.</li>
+      <li>On a match, the controller returns <code>200</code> with <code>{ displayName, organizationId, projectId, applicationId }</code> — for Himel that's <code>{ "Himel", "IGB2B", "Ecohub", "EcohubApp" }</code>. Nothing is written for the login itself beyond the seeding upsert.</li>
+      <li>The Angular <code>DemoAuthFlowStore</code> holds that response and shows Choose Organization (one match: IGB2B), then Choose Project (one match: Ecohub). Choosing the project does a full <strong>page navigation</strong> — not an API call — to <code>?organizationId=IGB2B&amp;projectId=Ecohub&amp;applicationId=EcohubApp&amp;displayName=Himel</code>.</li>
+      <li>On reload, <code>app.ts</code> sees <code>organizationId</code> in the URL and renders the dashboard instead of the login screen. Everything downstream reads host context from these URL query params, not from any stored session.</li>
+    </ol>
+    <figure class="diagram">
+      <pre class="mermaid">
+%%{init: {'theme':'neutral'}}%%
+sequenceDiagram
+    participant B as Browser
+    participant A as API
+    participant M as MongoDB
+    B->>A: POST /api/demo/login {email, password}
+    A->>M: upsert 5 seed rows into DemoUsers
+    A->>M: DemoUsers.find({email: "himel@demo.autom"})
+    M-->>A: matching document
+    A->>A: compare password field (plain text)
+    A-->>B: 200 {displayName, organizationId, projectId, applicationId}
+    Note over B: full page navigation to ?organizationId=IGB2B&projectId=Ecohub&applicationId=EcohubApp
+    B->>B: app.ts sees organizationId in URL → renders dashboard
+      </pre>
+      <figcaption>Login is a stateless credential check against <code>DemoUsers</code>; the dashboard is reached by URL query params, not a session cookie.</figcaption>
+    </figure>
+  </section>
+
+  <section class="scene" id="s2">
+    <div class="scene-head"><span class="scene-num">2</span><h2>First-time Teams Connect</h2></div>
+    <p class="scene-sub">GET /api/auth/connect → Entra sign-in → GET /api/auth/connect-complete</p>
+    <ol class="steps">
+      <li>The dashboard's first call is <code>GET /api/auth/connection-status?organizationId=IGB2B</code>. <code>AuthController.GetConnectionStatus</code> reads <code>OrganizationTeamsConnections</code> filtered by <code>organizationId</code> alone — nothing there yet, so it returns <code>{ isConnected: false, connectionStatus: "none" }</code>. The UI shows "Not Connected" + a Connect button.</li>
+      <li>Himel clicks Connect. The browser does a full navigation to <code>GET /api/auth/connect?returnUrl=&lt;current dashboard URL&gt;</code>. <code>AuthController.Connect</code> validates the return URL's origin against <code>Frontend:BaseUrl</code>, pulls <code>organizationId=IGB2B</code> back out of it, and builds a redirect target of its own: <code>/api/auth/connect-complete?organizationId=IGB2B&amp;returnUrl=...</code>.</li>
+      <li>It calls ASP.NET Core's <code>Challenge()</code>, which 302s the browser to Microsoft's real sign-in page (<code>login.microsoftonline.com/organizations/oauth2/v2.0/authorize</code>) requesting the three Graph scopes plus <code>openid profile offline_access</code>.</li>
+      <li>Himel signs in as <code>Atiqur.Himel@selisegroup.com</code> and consents. Microsoft redirects back with an authorization code to <code>POST /api/auth/callback</code> (the OIDC callback path, handled entirely by the Microsoft.Identity.Web middleware — no controller code of ours runs here).</li>
+      <li>The middleware exchanges that code for an access token, refresh token, and ID token by calling Microsoft's token endpoint directly (server-to-server, via MSAL). This is the first real token acquisition — MSAL saves the whole result into the distributed cache (Redis), encrypted via Data Protection.</li>
+      <li>ASP.NET Core also issues its own sign-in cookie for Himel's browser at this point — separate from the Graph tokens, it just proves he completed sign-in for this app.</li>
+      <li>The browser is redirected on to <code>GET /api/auth/connect-complete</code>, which requires that fresh cookie (<code>[Authorize]</code>). It reads the <code>oid</code>/<code>tid</code> claims and email off <code>User</code>, then <code>connectionRepository.UpsertAsync(...)</code> writes one document to <code>OrganizationTeamsConnections</code>: <code>{ organizationId: "IGB2B", tenantId, userObjectId, connectedAsEmail: "Atiqur.Himel@selisegroup.com", connectionStatus: "active" }</code>.</li>
+      <li>It redirects back to the original dashboard URL. The dashboard reloads, calls connection-status again — now <code>active</code> — and shows "Connected as Atiqur.Himel@selisegroup.com". Because status is <code>active</code>, it also fires <code>GET /api/teams</code> and <code>GET /api/teams/configuration</code> in parallel.</li>
+      <li><code>GET /api/teams</code> resolves a <code>GraphIdentity</code> from that same Mongo document, builds a synthetic identity out of it, and calls <code>ITokenAcquisition.GetAccessTokenForUserAsync(...)</code> — MSAL finds the token it just cached in Redis (no new Microsoft round trip) and the API calls <code>GET https://graph.microsoft.com/v1.0/me/joinedTeams</code> for real.</li>
+    </ol>
+    <figure class="diagram">
+      <pre class="mermaid">
+%%{init: {'theme':'neutral'}}%%
+sequenceDiagram
+    participant B as Browser
+    participant A as API
+    participant E as Entra ID
+    participant R as Redis
+    participant M as MongoDB
+    B->>A: GET /api/auth/connection-status?organizationId=IGB2B
+    A->>M: OrganizationTeamsConnections.find({organizationId})
+    M-->>A: (none)
+    A-->>B: 200 {connectionStatus:"none"} → shows "Connect"
+    B->>A: GET /api/auth/connect?returnUrl=...
+    A-->>B: 302 to login.microsoftonline.com
+    B->>E: sign in as Atiqur.Himel@selisegroup.com + consent
+    E-->>B: 302 to /api/auth/callback with auth code
+    B->>A: POST /api/auth/callback (code)
+    A->>E: exchange code for tokens (MSAL, server-to-server)
+    E-->>A: access + refresh + ID token
+    A->>R: save token set (encrypted) — keyed by uid.utid
+    A-->>B: sets sign-in cookie, 302 to /api/auth/connect-complete
+    B->>A: GET /api/auth/connect-complete (cookie attached)
+    A->>M: OrganizationTeamsConnections.upsert({organizationId:"IGB2B", tenantId, userObjectId, connectedAsEmail, status:"active"})
+    A-->>B: 302 back to dashboard
+    B->>A: GET /api/auth/connection-status?organizationId=IGB2B
+    A-->>B: 200 {connectionStatus:"active", connectedAsEmail:"Atiqur.Himel@..."}
+    B->>A: GET /api/teams?organizationId=IGB2B
+    A->>M: read OrganizationTeamsConnections for IGB2B → build GraphIdentity
+    A->>R: look up cached token for uid.utid (found, still valid)
+    A->>E: GET graph.microsoft.com/v1.0/me/joinedTeams
+    E-->>A: Himel's joined Teams
+    A-->>B: 200 {items:[...]}
+      </pre>
+      <figcaption>Two different Microsoft round trips happen here: the interactive sign-in (steps 3–6), and a silent, cache-only token fetch (last three steps) that never shows Himel a prompt.</figcaption>
+    </figure>
+  </section>
+
+  <section class="scene" id="s3">
+    <div class="scene-head"><span class="scene-num">3</span><h2>Configure a channel, then send</h2></div>
+    <p class="scene-sub">GET /api/teams/{id}/channels · PUT /api/teams/configuration · POST /api/teams/messages</p>
+    <ol class="steps">
+      <li>Picking a Team in the dropdown fires <code>GET /api/teams/{teamId}/channels?organizationId=IGB2B</code>. Same identity resolution as before (Mongo → <code>GraphIdentity</code> → cached Redis token), then a real, paginated Graph call: <code>GET /teams/{id}/channels?$select=id,displayName,...</code>.</li>
+      <li>Saving fires <code>PUT /api/teams/configuration</code> with <code>{organizationId, projectId, applicationId, teamId, channelId}</code>. <code>TeamsConfigurationService.SaveAsync</code> re-reads <code>OrganizationTeamsConnections</code> for the org, then <strong>revalidates both choices against Graph again</strong> (fresh <code>GetTeamsAsync</code> + <code>GetChannelsAsync</code> calls) before saving anything.</li>
+      <li>Once both match, it upserts one document into <code>TeamsConfigurations</code>, keyed by the unique compound index <code>{organizationId, projectId, applicationId}</code>: <code>{teamId, teamName, channelId, channelName, tenantId, userObjectId, connectionStatus:"active"}</code>. <code>tenantId</code>/<code>userObjectId</code> here come from the org connection, not from whoever clicked Save.</li>
+      <li>The dashboard flips to the Send Message view. Typing a message and sending fires <code>POST /api/teams/messages?organizationId=...&amp;projectId=...&amp;applicationId=...</code> with <code>{content}</code>.</li>
+      <li><code>TeamsMessagesController</code> first reads the saved config back from <code>TeamsConfigurations</code> (404 if none), then hands it to <code>TeamsMessageService.SendAsync</code>.</li>
+      <li>That service reads <code>OrganizationTeamsConnections</code> <strong>again</strong> (not the config's own stored tenant/user fields) to get the current <code>GraphIdentity</code>, re-checks the team still exists, re-checks the channel still exists (either miss → <code>409 stale_configuration</code>), then calls Graph for real: <code>POST /teams/{teamId}/channels/{channelId}/messages</code>.</li>
+      <li>Graph answers <code>201 Created</code> with the message id, timestamp, and <code>webUrl</code> — the API forwards all three back to the browser as <code>201</code>, and the UI shows "Message sent · View in Teams".</li>
+    </ol>
+    <figure class="diagram">
+      <pre class="mermaid">
+%%{init: {'theme':'neutral'}}%%
+sequenceDiagram
+    participant B as Browser
+    participant A as API
+    participant E as Entra ID / Graph
+    participant M as MongoDB
+    B->>A: PUT /api/teams/configuration {org, project, app, teamId, channelId}
+    A->>M: OrganizationTeamsConnections.find({organizationId}) → GraphIdentity
+    A->>E: GET me/joinedTeams (revalidate team)
+    A->>E: GET teams/{id}/channels (revalidate channel)
+    A->>M: TeamsConfigurations.upsert({org, project, app, teamId, channelId, tenantId, userObjectId})
+    A-->>B: 200 saved configuration
+    Note over B: view switches to Send Message
+    B->>A: POST /api/teams/messages?org&project&app {content}
+    A->>M: TeamsConfigurations.find({org, project, app})
+    A->>M: OrganizationTeamsConnections.find({organizationId}) → GraphIdentity
+    A->>E: GET me/joinedTeams / channels (re-validate, guard against 409)
+    A->>E: POST teams/{teamId}/channels/{channelId}/messages {content}
+    E-->>A: 201 Created {id, createdDateTime, webUrl}
+    A-->>B: 201 {id, createdDateTime, webUrl}
+      </pre>
+      <figcaption>Both save and send re-check the team/channel against live Graph data every time — nothing is trusted from a previous save.</figcaption>
+    </figure>
+  </section>
+
+  <section class="scene" id="s4">
+    <div class="scene-head"><span class="scene-num">4</span><h2>Ratan logs in — same org, zero OAuth</h2></div>
+    <p class="scene-sub">Same org/project as Himel: IGB2B / Ecohub / EcohubApp</p>
+    <div class="key-field">
+      <strong>The one field that makes this work:</strong> <code>OrganizationTeamsConnections</code> is keyed uniquely by <code>organizationId</code> alone — not by which user is asking. Ratan's request never carries his own identity into any Teams/Graph lookup; <code>TeamsController</code>, <code>TeamsConfigurationController</code>, and <code>TeamsMessagesController</code> are all <code>[AllowAnonymous]</code> and never read <code>User</code> at all. "Ratan" only ever exists as display text in the page header.
+    </div>
+    <ol class="steps">
+      <li>Ratan logs in with <code>ratan@demo.autom</code>. The seed data gives him the identical triple Himel has: <code>{IGB2B, Ecohub, EcohubApp}</code>. He lands on the exact same dashboard URL shape Himel used.</li>
+      <li><code>GET /api/auth/connection-status?organizationId=IGB2B</code> runs the same Mongo query as before, filtered only by <code>organizationId</code> — it finds <em>Himel's</em> document, because there's only one document per organization, period. Ratan's browser has never done a Microsoft sign-in and holds no Entra cookie whatsoever; that's never checked.</li>
+      <li><code>GET /api/teams?organizationId=IGB2B</code>: <code>TeamsController.ResolveIdentityAsync</code> reads that same document and builds a <code>GraphIdentity</code> out of <strong>Himel's</strong> <code>tenantId</code>/<code>userObjectId</code>. The token pulled from Redis is Himel's cached token. Graph is called as Himel.</li>
+      <li><code>GET /api/teams/configuration?organizationId=IGB2B&amp;projectId=Ecohub&amp;applicationId=EcohubApp</code>: because Ratan's project triple is byte-for-byte identical to Himel's, this is the exact same document lookup in <code>TeamsConfigurations</code> — it returns the "Autom Product Team / Incoming Webhook" config Himel already saved. View mode goes straight to Send Message.</li>
+      <li>Sending as Ratan runs the identical <code>TeamsMessageService.SendAsync</code> path from Section 3 — it resolves <code>GraphIdentity</code> from Mongo, not from Ratan, and posts to Graph as Himel's account.</li>
+    </ol>
+    <figure class="diagram">
+      <pre class="mermaid">
+%%{init: {'theme':'neutral'}}%%
+sequenceDiagram
+    participant Rb as Ratan's Browser
+    participant A as API
+    participant M as MongoDB
+    participant R as Redis
+    Note over Rb: no Entra cookie exists for Ratan — ever
+    Rb->>A: GET /api/auth/connection-status?organizationId=IGB2B
+    A->>M: OrganizationTeamsConnections.find({organizationId:"IGB2B"})
+    M-->>A: Himel's document (only one exists for this org)
+    A-->>Rb: 200 {connectionStatus:"active", connectedAsEmail:"Atiqur.Himel@..."}
+    Rb->>A: GET /api/teams?organizationId=IGB2B
+    A->>M: same lookup → GraphIdentity(Himel's tenantId, userObjectId)
+    A->>R: fetch cached token for Himel's uid.utid
+    Note over A: Ratan's own identity is never read — the request has no auth requirement at all
+    A-->>Rb: 200 Himel's joined Teams
+      </pre>
+      <figcaption>No arrow in this flow ever reaches Entra ID from Ratan's side — that absence is the entire mechanism.</figcaption>
+    </figure>
+  </section>
+
+  <section class="scene" id="s5">
+    <div class="scene-head"><span class="scene-num">5</span><h2>Sabbir logs in — connected, but unconfigured</h2></div>
+    <p class="scene-sub">Same org as Himel, different project: IGB2B / Ecap / EcapApp</p>
+    <ol class="steps">
+      <li>Sabbir's org-connection check is identical to Ratan's: <code>connection-status?organizationId=IGB2B</code> still finds Himel's document, because the org-level connection has no idea what "project" even means — it's one flag per organization. Sabbir's card shows "Connected as Atiqur.Himel@selisegroup.com" too.</li>
+      <li>Because status came back <code>active</code>, the store also fires <code>GET /api/teams/configuration?organizationId=IGB2B&amp;projectId=Ecap&amp;applicationId=EcapApp</code> — a completely separate lookup, keyed by the full three-part compound index.</li>
+      <li>That triple has never been saved by anyone. <code>TeamsConfigurations.find(...)</code> returns nothing, the endpoint answers <code>404 configuration_not_found</code>, and <code>configurationLoadState</code> becomes <code>'none'</code>.</li>
+      <li>Two independent booleans decide the screen: <code>isConnected</code> (org-level, true) picks whether the Connection card and the Configuration card render at all; <code>configurationLoadState</code>/<code>viewMode</code> (project-level, <code>'configure'</code>) picks which card body shows. Sabbir gets the Team/Channel picker, pre-populated from Himel's Graph identity, with "No Teams configuration is saved for this application yet."</li>
+      <li>Saving from here writes a brand-new <code>TeamsConfigurations</code> document for <code>{IGB2B, Ecap, EcapApp}</code>, independent of Himel's <code>{IGB2B, Ecohub, EcohubApp}</code> one — same organization, two separate saved destinations.</li>
+    </ol>
+    <figure class="diagram">
+      <pre class="mermaid">
+%%{init: {'theme':'neutral'}}%%
+flowchart TD
+    A["GET /api/auth/connection-status?organizationId=IGB2B"] --> B{"OrganizationTeamsConnections\nhas a doc for IGB2B?"}
+    B -- yes --> C["orgConnectionStatus = active\nConnection card: 'Connected as Himel'"]
+    C --> D["GET /api/teams/configuration\n?organizationId=IGB2B&projectId=Ecap&applicationId=EcapApp"]
+    D --> E{"TeamsConfigurations has a doc for\n{IGB2B, Ecap, EcapApp}?"}
+    E -- no, 404 --> F["viewMode = configure\nshow Team/Channel picker"]
+    E -- yes --> G["viewMode = send\nshow Send Message"]
+    B -- no --> H["orgConnectionStatus = none\nshow Connect button, no picker at all"]
+    style C fill:#eaf4f1,stroke:#1f6f63,color:#173e37
+    style F fill:#fbf3e4,stroke:#c08a2e,color:#6b4c17
+    style G fill:#eaf4f1,stroke:#1f6f63,color:#173e37
+    style H fill:#fbf3e4,stroke:#c08a2e,color:#6b4c17
+      </pre>
+      <figcaption>Two independent Mongo lookups — one keyed by <code>organizationId</code>, one by the full <code>{org, project, application}</code> triple — combine to pick the screen.</figcaption>
+    </figure>
+  </section>
+
+  <section class="scene" id="s6">
+    <div class="scene-head"><span class="scene-num">6</span><h2>Jim logs in — a different organization entirely</h2></div>
+    <p class="scene-sub">SwissLife / SwissLifeProject / SwissLifeApp</p>
+    <ol class="steps">
+      <li>Jim's seed row carries <code>organizationId: "SwissLife"</code> — nothing shared with <code>IGB2B</code>.</li>
+      <li><code>GET /api/auth/connection-status?organizationId=SwissLife</code> filters <code>OrganizationTeamsConnections</code> by that exact string. No document has ever been written with <code>organizationId: "SwissLife"</code>, so the query returns nothing and the endpoint answers <code>{isConnected:false, connectionStatus:"none"}</code>.</li>
+      <li>The dashboard shows "Not Connected" + a Connect button — the same very-first state Himel started from. Because status isn't <code>active</code>, the store never calls <code>GET /api/teams</code> or <code>GET /api/teams/configuration</code> at all, and the Configuration card doesn't render.</li>
+      <li>If Jim clicks Connect, it's a full fresh OAuth round trip through his own Microsoft account, landing on <code>ConnectComplete</code>, which upserts a <strong>new, separate</strong> <code>OrganizationTeamsConnections</code> document keyed <code>organizationId: "SwissLife"</code>.</li>
+      <li>The isolation mechanism is nothing more exotic than that string plus the unique index on it — every one of these endpoints always filters by the <code>organizationId</code> that arrived in the caller's own query string, and never looks at any other organization's document.</li>
+    </ol>
+    <figure class="diagram">
+      <pre class="mermaid">
+%%{init: {'theme':'neutral'}}%%
+flowchart LR
+    subgraph Coll["OrganizationTeamsConnections (MongoDB)"]
+      direction TB
+      D1["{ organizationId: 'IGB2B',\n  connectedAsEmail: 'Atiqur.Himel@...',\n  connectionStatus: 'active' }"]
+      D2["{ organizationId: 'SwissLife' }\n— no such document exists"]
+    end
+    Q1["Ratan / Sabbir request\norganizationId = IGB2B"] --> D1
+    Q2["Jim's request\norganizationId = SwissLife"] -.-> D2
+    D1 --> R1["200 active, Connected as Himel"]
+    D2 --> R2["200 none → shows Connect button"]
+    style D1 fill:#eaf4f1,stroke:#1f6f63,color:#173e37
+    style D2 fill:#fbf3e4,stroke:#c08a2e,color:#6b4c17,stroke-dasharray: 4 3
+      </pre>
+      <figcaption>One document per organization, unique-indexed on <code>organizationId</code> — Jim's lookup simply misses.</figcaption>
+    </figure>
+  </section>
+
+  <section class="scene" id="s7">
+    <div class="scene-head"><span class="scene-num">7</span><h2>Token lifecycle &amp; the reconnect path</h2></div>
+
+    <h3 style="font-size:16px;margin:0 0 8px;">Where the access token is used</h3>
+    <p style="margin:0 0 16px;">Only inside <code>TeamsGraphService.SendAsync</code> — it's attached as <code>Authorization: Bearer &lt;token&gt;</code> on every real Graph call (<code>GET me/joinedTeams</code>, <code>GET teams/{id}/channels</code>, <code>POST .../messages</code>). No controller or service ever sees the raw token; it's fetched fresh from <code>ITokenAcquisition.GetAccessTokenForUserAsync(...)</code> right before each call.</p>
+
+    <h3 style="font-size:16px;margin:0 0 8px;">Where the refresh token is used</h3>
+    <p style="margin:0 0 16px;">Nowhere in this codebase directly — it's never read, never passed around. It lives inside the encrypted token-cache blob that Microsoft.Identity.Web writes to Redis, and only MSAL's own internals ever touch it.</p>
+
+    <h3 style="font-size:16px;margin:0 0 8px;">Redis, step by step</h3>
+    <ul style="margin:0 0 16px; padding-left:20px;">
+      <li><strong>Write:</strong> happens automatically inside Microsoft.Identity.Web, at the end of the OIDC sign-in (the code-for-tokens exchange in Section 2) and again any time MSAL silently renews a token.</li>
+      <li><strong>Read:</strong> happens on every single <code>GetAccessTokenForUserAsync(...)</code> call — MSAL's <code>AcquireTokenSilent</code> looks for a cached, still-valid access token under the account key <code>{uid}.{utid}</code> before doing anything else over the network.</li>
+      <li>Every cache entry is encrypted (ASP.NET Core Data Protection, <code>Encrypt = true</code>) before it's written. No raw token ever appears in MongoDB — neither <code>OrganizationTeamsConnections</code> nor <code>TeamsConfigurations</code> has a token field, only identifiers (<code>tenantId</code>, <code>userObjectId</code>).</li>
+    </ul>
+
+    <h3 style="font-size:16px;margin:0 0 8px;">Where MSAL actually gets invoked</h3>
+    <ol class="steps">
+      <li><code>Program.cs</code> wires it up once at startup: <code>AddMicrosoftIdentityWebApp(...).EnableTokenAcquisitionToCallDownstreamApi(...).AddDistributedTokenCaches()</code>.</li>
+      <li>During <code>POST /api/auth/callback</code> — the framework's own OIDC handler runs MSAL's <code>AcquireTokenByAuthorizationCode</code>, entirely outside our controller code.</li>
+      <li>Inside every <code>TeamsGraphService.SendAsync</code> call — <code>GetAccessTokenForUserAsync(...)</code>, MSAL's <code>AcquireTokenSilent</code> path.</li>
+    </ol>
+
+    <div class="callout">
+      <strong>Unconfirmed — needs verification</strong>
+      Whether an expired access token gets silently renewed using the refresh token, transparently inside the same <code>GetAccessTokenForUserAsync</code> call, is standard documented MSAL behavior — but it was not directly observed in this session. Every successful call we watched was a straight cache hit on a token acquired minutes earlier, not a renewal of an expired one. If asked live: describe it as "MSAL is supposed to handle this automatically," not as something this team has watched happen.
+    </div>
+
+    <h3 style="font-size:16px;margin:24px 0 8px;">When the refresh token itself is dead — the needsReconnect path</h3>
+    <ol class="steps">
+      <li>Any Graph call throws <code>MicrosoftIdentityWebChallengeUserException</code> when MSAL can't silently recover — refresh token expired, consent revoked, password changed, a Conditional Access policy demands a fresh interactive sign-in. <code>TeamsGraphService</code> maps that to <code>TeamsGraphException(401, ...)</code>.</li>
+      <li>Whichever service call was in flight catches that specific <code>401</code> and calls <code>OrganizationTeamsConnectionRepository.MarkNeedsReconnectAsync(organizationId, "reauthentication_required", ...)</code>.</li>
+      <li>That writes to the <em>same</em> <code>OrganizationTeamsConnections</code> document: <code>connectionStatus → "needsReconnect"</code>, plus a failure code and timestamp. Because it's one document per org, this instantly affects every project and every user in that organization — not just whoever triggered it.</li>
+      <li>The exception is rethrown and caught by the global <code>TeamsGraphExceptionHandler</code> middleware, which answers <code>401</code> with <code>{ code: "reauthentication_required" }</code> in the body.</li>
+      <li>The frontend's global <code>reauthenticationInterceptor</code> watches every response; on this exact code it calls <code>store.markNeedsReconnect()</code>, flipping the UI immediately without another round trip.</li>
+      <li>The connection card shows "Teams connection needs reconnecting. Notifications for this application are paused." with a Reconnect button. Anyone else opening the dashboard afterward sees the same thing, straight from Mongo.</li>
+      <li>Reconnect runs the exact same flow as Section 2, step 2 onward — a fresh OAuth round trip, ending in <code>ConnectComplete</code> upserting the same document back to <code>connectionStatus: "active"</code> with every failure field cleared. The whole organization is healthy again the moment that one document is overwritten.</li>
+    </ol>
+    <figure class="diagram">
+      <pre class="mermaid">
+%%{init: {'theme':'neutral'}}%%
+sequenceDiagram
+    participant A as API
+    participant E as Entra ID
+    participant M as MongoDB
+    participant B as Any user's browser
+    A->>E: Graph call using cached identity
+    E-->>A: rejects — consent revoked / refresh token dead
+    A->>A: MicrosoftIdentityWebChallengeUserException → 401
+    A->>M: OrganizationTeamsConnections.update({organizationId}, status:"needsReconnect")
+    A-->>B: 401 {code:"reauthentication_required"}
+    Note over B: reauthenticationInterceptor flips orgConnectionStatus instantly
+    B->>B: banner: "needs reconnecting" + Reconnect button
+    Note over B: any other user opening the dashboard now also sees needsReconnect (reads Mongo directly)
+    B->>A: click Reconnect → GET /api/auth/connect (full OIDC round trip)
+    A->>M: OrganizationTeamsConnections.upsert({status:"active", failure fields: null})
+    Note over M: same document, overwritten — whole org recovers at once
+      </pre>
+      <figcaption>Detection, persistence, and recovery all pivot on one shared document per organization.</figcaption>
+    </figure>
+  </section>
+
+  <footer class="colophon">
+    <div class="ref-wrap">
+      <table class="refcard">
+        <caption>Quick reference — collections &amp; unique keys</caption>
+        <thead>
+          <tr><th>Collection</th><th>Keyed by</th><th>Holds</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="mono">DemoUsers</td><td class="mono">email</td><td>5 seeded demo accounts — display name + fixed org/project/app. Demo-only.</td></tr>
+          <tr><td class="mono">OrganizationTeamsConnections</td><td class="mono">organizationId (unique)</td><td>Which Entra account the whole org acts through, plus connectionStatus.</td></tr>
+          <tr><td class="mono">TeamsConfigurations</td><td class="mono">organizationId + projectId + applicationId (unique)</td><td>The saved Team/Channel destination per application.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:18px;"><code>GET /api/auth/session</code> still exists (personal-cookie status) but the current frontend no longer calls it — superseded by <code>connection-status</code>. Written from the code in <code>src/TeamsIntegration.Api/</code> as of 2026-09-13; re-check before relying on this if the controllers change.</p>
+  </footer>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({ startOnLoad: true, securityLevel: 'loose' });
+</script>
+</body>
+</html>
