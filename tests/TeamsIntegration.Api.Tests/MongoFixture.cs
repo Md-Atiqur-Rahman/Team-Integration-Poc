@@ -28,6 +28,12 @@ public sealed class MongoFixture : IDisposable
         return database.GetCollection<DemoUser>(Guid.NewGuid().ToString("N"));
     }
 
+    public IMongoCollection<OrganizationTeamsConnection> CreateEmptyOrganizationConnectionsCollection()
+    {
+        var database = Client.GetDatabase("teams_integration_tests");
+        return database.GetCollection<OrganizationTeamsConnection>(Guid.NewGuid().ToString("N"));
+    }
+
     public void Dispose() => _runner.Dispose();
 }
 

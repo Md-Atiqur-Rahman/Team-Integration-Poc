@@ -6,8 +6,10 @@ using TeamsIntegration.Api.Services;
 
 namespace TeamsIntegration.Api.Controllers;
 
+// Anonymous by design: sending resolves the org-shared connection internally (via
+// TeamsConfigurationService/TeamsMessageService), not the caller's own Entra session.
 [ApiController]
-[Authorize]
+[AllowAnonymous]
 [Route("api/teams/messages")]
 public sealed class TeamsMessagesController(
     ITeamsConfigurationService teamsConfigurationService,

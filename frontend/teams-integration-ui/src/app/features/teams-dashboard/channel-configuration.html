@@ -7,9 +7,9 @@
       <strong>{{ configuration.channelName ?? configuration.channelId }}</strong>
       <span
         class="badge"
-        [class.badge--warning]="configuration.connectionStatus === 'needsReconnect'"
+        [class.badge--warning]="store.orgConnectionStatus() === 'needsReconnect'"
       >
-        {{ configuration.connectionStatus === 'needsReconnect' ? 'Needs reconnect' : 'Active' }}
+        {{ store.orgConnectionStatus() === 'needsReconnect' ? 'Needs reconnect' : 'Active' }}
       </span>
     </p>
   } @else if (store.configurationLoadState() === 'none') {

@@ -10,8 +10,6 @@ public interface ITeamsConfigurationService
         string applicationId,
         string teamId,
         string channelId,
-        string tenantId,
-        string userObjectId,
         CancellationToken cancellationToken);
 
     Task<TeamsConfigurationDto?> GetActiveAsync(

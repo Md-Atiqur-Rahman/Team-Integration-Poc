@@ -6,28 +6,31 @@ namespace TeamsIntegration.Api.Services;
 
 public sealed class TeamsMessageService(
     ITeamsGraphService teamsGraphService,
-    ITeamsConfigurationRepository repository) : ITeamsMessageService
+    IOrganizationTeamsConnectionRepository connectionRepository) : ITeamsMessageService
 {
     public async Task<SendChannelMessageResponse> SendAsync(
         TeamsConfigurationDto configuration,
         string content,
         CancellationToken cancellationToken)
     {
-        if (configuration.ConnectionStatus == TeamsConfigurationStatus.NeedsReconnect)
+        var connection = await connectionRepository.GetActiveAsync(configuration.OrganizationId, cancellationToken);
+        if (connection is null || connection.ConnectionStatus == TeamsConfigurationStatus.NeedsReconnect)
         {
             throw new TeamsGraphException(
                 StatusCodes.Status401Unauthorized,
                 "Microsoft Teams access needs reconnecting.");
         }
 
+        var identity = new GraphIdentity(connection.TenantId, connection.UserObjectId);
+
         IReadOnlyList<TeamItem> teams;
         try
         {
-            teams = await teamsGraphService.GetTeamsAsync(cancellationToken);
+            teams = await teamsGraphService.GetTeamsAsync(identity, cancellationToken);
         }
         catch (TeamsGraphException ex) when (ex.StatusCode == StatusCodes.Status401Unauthorized)
         {
-            await MarkNeedsReconnectAsync(configuration, cancellationToken);
+            await MarkNeedsReconnectAsync(configuration.OrganizationId, cancellationToken);
             throw;
         }
 
@@ -41,11 +44,11 @@ public sealed class TeamsMessageService(
         IReadOnlyList<ChannelItem> channels;
         try
         {
-            channels = await teamsGraphService.GetChannelsAsync(configuration.TeamId, cancellationToken);
+            channels = await teamsGraphService.GetChannelsAsync(identity, configuration.TeamId, cancellationToken);
         }
         catch (TeamsGraphException ex) when (ex.StatusCode == StatusCodes.Status401Unauthorized)
         {
-            await MarkNeedsReconnectAsync(configuration, cancellationToken);
+            await MarkNeedsReconnectAsync(configuration.OrganizationId, cancellationToken);
             throw;
         }
 
@@ -59,21 +62,20 @@ public sealed class TeamsMessageService(
         try
         {
             return await teamsGraphService.SendMessageAsync(
+                identity,
                 new SendChannelMessageRequest(configuration.TeamId, configuration.ChannelId, content),
                 cancellationToken);
         }
         catch (TeamsGraphException ex) when (ex.StatusCode == StatusCodes.Status401Unauthorized)
         {
-            await MarkNeedsReconnectAsync(configuration, cancellationToken);
+            await MarkNeedsReconnectAsync(configuration.OrganizationId, cancellationToken);
             throw;
         }
     }
 
-    private Task MarkNeedsReconnectAsync(TeamsConfigurationDto configuration, CancellationToken cancellationToken) =>
-        repository.MarkNeedsReconnectAsync(
-            configuration.OrganizationId,
-            configuration.ProjectId,
-            configuration.ApplicationId,
+    private Task MarkNeedsReconnectAsync(string organizationId, CancellationToken cancellationToken) =>
+        connectionRepository.MarkNeedsReconnectAsync(
+            organizationId,
             TeamsGraphException.ReauthenticationRequiredCode,
             cancellationToken);
 }

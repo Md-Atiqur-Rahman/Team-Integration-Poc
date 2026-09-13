@@ -82,6 +82,10 @@ builder.Services.AddScoped<ITeamsConfigurationService, TeamsConfigurationService
 builder.Services.AddScoped<ITeamsMessageService, TeamsMessageService>();
 
 builder.Services.AddSingleton(sp =>
+    sp.GetRequiredService<IMongoDatabase>().GetCollection<OrganizationTeamsConnection>("OrganizationTeamsConnections"));
+builder.Services.AddScoped<IOrganizationTeamsConnectionRepository, MongoOrganizationTeamsConnectionRepository>();
+
+builder.Services.AddSingleton(sp =>
     sp.GetRequiredService<IMongoDatabase>().GetCollection<DemoUser>("DemoUsers"));
 builder.Services.AddScoped<IDemoAuthService, DemoAuthService>();
 

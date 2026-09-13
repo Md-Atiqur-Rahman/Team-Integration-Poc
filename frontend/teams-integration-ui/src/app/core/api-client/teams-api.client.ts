@@ -3,8 +3,8 @@ import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { API_BASE_URL, HostContext } from '../config';
 import { ApiError } from '../models/api-error.model';
+import { ConnectionStatusResponse } from '../models/connection-status.model';
 import { SendMessageResponse } from '../models/send-message.model';
-import { SessionStatus } from '../models/session-status.model';
 import { ChannelItem, TeamItem } from '../models/team.model';
 import { SaveTeamsConfigurationRequest, TeamsConfigurationDto } from '../models/teams-configuration.model';
 
@@ -20,21 +20,27 @@ export class TeamsApiClient {
     return `${API_BASE_URL}/api/auth/connect?returnUrl=${encodeURIComponent(returnUrl)}`;
   }
 
-  getSession(): Promise<SessionStatus> {
-    return firstValueFrom(this.http.get<SessionStatus>(`${API_BASE_URL}/api/auth/session`));
+  getConnectionStatus(organizationId: string): Promise<ConnectionStatusResponse> {
+    return firstValueFrom(
+      this.http.get<ConnectionStatusResponse>(
+        `${API_BASE_URL}/api/auth/connection-status?organizationId=${encodeURIComponent(organizationId)}`,
+      ),
+    );
   }
 
-  async getTeams(): Promise<TeamItem[]> {
+  async getTeams(organizationId: string): Promise<TeamItem[]> {
     const response = await firstValueFrom(
-      this.http.get<ItemsResponse<TeamItem>>(`${API_BASE_URL}/api/teams`),
+      this.http.get<ItemsResponse<TeamItem>>(
+        `${API_BASE_URL}/api/teams?organizationId=${encodeURIComponent(organizationId)}`,
+      ),
     );
     return response.items;
   }
 
-  async getChannels(teamId: string): Promise<ChannelItem[]> {
+  async getChannels(teamId: string, organizationId: string): Promise<ChannelItem[]> {
     const response = await firstValueFrom(
       this.http.get<ItemsResponse<ChannelItem>>(
-        `${API_BASE_URL}/api/teams/${encodeURIComponent(teamId)}/channels`,
+        `${API_BASE_URL}/api/teams/${encodeURIComponent(teamId)}/channels?organizationId=${encodeURIComponent(organizationId)}`,
       ),
     );
     return response.items;

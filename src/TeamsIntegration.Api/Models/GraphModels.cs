@@ -17,6 +17,12 @@ public sealed record SendChannelMessageRequest(string? TeamId, string? ChannelId
 
 public sealed record SendChannelMessageResponse(string Id, DateTimeOffset? CreatedDateTime, string? WebUrl);
 
+/// <summary>
+/// The Entra identity (tenant + object id) whose stored, org-shared connection a Graph call
+/// acts on behalf of — never the current HTTP request's own signed-in user.
+/// </summary>
+public sealed record GraphIdentity(string TenantId, string UserObjectId);
+
 public static class GraphInput
 {
     public const int MaximumIdentifierLength = 512;

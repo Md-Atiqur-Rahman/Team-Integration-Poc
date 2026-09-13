@@ -6,7 +6,8 @@ namespace TeamsIntegration.Api.Services;
 
 public sealed class TeamsConfigurationService(
     ITeamsGraphService teamsGraphService,
-    ITeamsConfigurationRepository repository) : ITeamsConfigurationService
+    ITeamsConfigurationRepository repository,
+    IOrganizationTeamsConnectionRepository connectionRepository) : ITeamsConfigurationService
 {
     public async Task<TeamsConfigurationDto> SaveAsync(
         string organizationId,
@@ -14,18 +15,29 @@ public sealed class TeamsConfigurationService(
         string applicationId,
         string teamId,
         string channelId,
-        string tenantId,
-        string userObjectId,
         CancellationToken cancellationToken)
     {
+        // The org's stored connection supplies both the Graph identity (below) and the
+        // tenantId/userObjectId recorded on the saved configuration — the caller saving a
+        // channel selection is never required to be the same person who connected Teams.
+        var connection = await connectionRepository.GetActiveAsync(organizationId, cancellationToken);
+        if (connection is null)
+        {
+            throw new TeamsGraphException(
+                StatusCodes.Status404NotFound,
+                "This organization has no Microsoft Teams connection yet.");
+        }
+
+        var identity = new GraphIdentity(connection.TenantId, connection.UserObjectId);
+
         IReadOnlyList<TeamItem> teams;
         try
         {
-            teams = await teamsGraphService.GetTeamsAsync(cancellationToken);
+            teams = await teamsGraphService.GetTeamsAsync(identity, cancellationToken);
         }
         catch (TeamsGraphException ex) when (ex.StatusCode == StatusCodes.Status401Unauthorized)
         {
-            await MarkNeedsReconnectAsync(organizationId, projectId, applicationId, cancellationToken);
+            await MarkNeedsReconnectAsync(organizationId, cancellationToken);
             throw;
         }
 
@@ -40,11 +52,11 @@ public sealed class TeamsConfigurationService(
         IReadOnlyList<ChannelItem> channels;
         try
         {
-            channels = await teamsGraphService.GetChannelsAsync(teamId, cancellationToken);
+            channels = await teamsGraphService.GetChannelsAsync(identity, teamId, cancellationToken);
         }
         catch (TeamsGraphException ex) when (ex.StatusCode == StatusCodes.Status401Unauthorized)
         {
-            await MarkNeedsReconnectAsync(organizationId, projectId, applicationId, cancellationToken);
+            await MarkNeedsReconnectAsync(organizationId, cancellationToken);
             throw;
         }
 
@@ -61,8 +73,8 @@ public sealed class TeamsConfigurationService(
             OrganizationId = organizationId,
             ProjectId = projectId,
             ApplicationId = applicationId,
-            TenantId = tenantId,
-            UserObjectId = userObjectId,
+            TenantId = connection.TenantId,
+            UserObjectId = connection.UserObjectId,
             TeamId = matchedTeam.Id,
             TeamName = matchedTeam.DisplayName,
             ChannelId = matchedChannel.Id,
@@ -92,15 +104,9 @@ public sealed class TeamsConfigurationService(
         return configuration is null ? null : ToDto(configuration);
     }
 
-    private Task MarkNeedsReconnectAsync(
-        string organizationId,
-        string projectId,
-        string applicationId,
-        CancellationToken cancellationToken) =>
-        repository.MarkNeedsReconnectAsync(
+    private Task MarkNeedsReconnectAsync(string organizationId, CancellationToken cancellationToken) =>
+        connectionRepository.MarkNeedsReconnectAsync(
             organizationId,
-            projectId,
-            applicationId,
             TeamsGraphException.ReauthenticationRequiredCode,
             cancellationToken);
 

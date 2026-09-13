@@ -20,4 +20,17 @@ public static class MongoIndexInitializer
 
         await collection.Indexes.CreateOneAsync(model, cancellationToken: cancellationToken);
     }
+
+    public static async Task EnsureIndexesAsync(
+        IMongoCollection<OrganizationTeamsConnection> collection,
+        CancellationToken cancellationToken = default)
+    {
+        var keys = Builders<OrganizationTeamsConnection>.IndexKeys.Ascending(c => c.OrganizationId);
+
+        var model = new CreateIndexModel<OrganizationTeamsConnection>(
+            keys,
+            new CreateIndexOptions { Unique = true, Name = "organizationId_unique" });
+
+        await collection.Indexes.CreateOneAsync(model, cancellationToken: cancellationToken);
+    }
 }

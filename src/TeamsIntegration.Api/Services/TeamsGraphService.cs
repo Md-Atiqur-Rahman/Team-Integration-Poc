@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Claims;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Identity.Web;
@@ -10,11 +11,15 @@ namespace TeamsIntegration.Api.Services;
 
 public interface ITeamsGraphService
 {
-    Task<IReadOnlyList<TeamItem>> GetTeamsAsync(CancellationToken cancellationToken);
+    Task<IReadOnlyList<TeamItem>> GetTeamsAsync(GraphIdentity identity, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<ChannelItem>> GetChannelsAsync(string teamId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<ChannelItem>> GetChannelsAsync(
+        GraphIdentity identity,
+        string teamId,
+        CancellationToken cancellationToken);
 
     Task<SendChannelMessageResponse> SendMessageAsync(
+        GraphIdentity identity,
         SendChannelMessageRequest request,
         CancellationToken cancellationToken);
 }
@@ -33,9 +38,9 @@ public sealed class TeamsGraphService(
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    public async Task<IReadOnlyList<TeamItem>> GetTeamsAsync(CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<TeamItem>> GetTeamsAsync(GraphIdentity identity, CancellationToken cancellationToken)
     {
-        var response = await SendAsync(HttpMethod.Get, "me/joinedTeams", null, cancellationToken);
+        var response = await SendAsync(identity, HttpMethod.Get, "me/joinedTeams", null, cancellationToken);
         var page = await ReadJsonAsync<GraphPage<GraphTeam>>(response, cancellationToken);
 
         return page.Value
@@ -44,7 +49,10 @@ public sealed class TeamsGraphService(
             .ToArray();
     }
 
-    public async Task<IReadOnlyList<ChannelItem>> GetChannelsAsync(string teamId, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<ChannelItem>> GetChannelsAsync(
+        GraphIdentity identity,
+        string teamId,
+        CancellationToken cancellationToken)
     {
         var channels = new List<ChannelItem>();
         var relativeUrl = $"teams/{Uri.EscapeDataString(teamId)}/channels"
@@ -52,7 +60,7 @@ public sealed class TeamsGraphService(
 
         while (relativeUrl is not null)
         {
-            var response = await SendAsync(HttpMethod.Get, relativeUrl, null, cancellationToken);
+            var response = await SendAsync(identity, HttpMethod.Get, relativeUrl, null, cancellationToken);
             var page = await ReadJsonAsync<GraphPage<GraphChannel>>(response, cancellationToken);
 
             channels.AddRange(page.Value
@@ -71,6 +79,7 @@ public sealed class TeamsGraphService(
     }
 
     public async Task<SendChannelMessageResponse> SendMessageAsync(
+        GraphIdentity identity,
         SendChannelMessageRequest request,
         CancellationToken cancellationToken)
     {
@@ -85,7 +94,7 @@ public sealed class TeamsGraphService(
             }
         };
 
-        var response = await SendAsync(HttpMethod.Post, path, payload, cancellationToken);
+        var response = await SendAsync(identity, HttpMethod.Post, path, payload, cancellationToken);
         if (response.StatusCode != HttpStatusCode.Created)
         {
             throw new TeamsGraphException(
@@ -98,6 +107,7 @@ public sealed class TeamsGraphService(
     }
 
     private async Task<HttpResponseMessage> SendAsync(
+        GraphIdentity identity,
         HttpMethod method,
         string path,
         object? payload,
@@ -106,7 +116,26 @@ public sealed class TeamsGraphService(
         string token;
         try
         {
-            token = await tokenAcquisition.GetAccessTokenForUserAsync(RequiredScopes);
+            // Acts on behalf of the org's stored connection, not HttpContext.User — the caller
+            // supplying this identity (never the current request's own signed-in user) is what
+            // makes the connection shared across every user of the organization.
+            //
+            // MSAL's cache lookup for a supplied ClaimsPrincipal goes through
+            // ClaimsPrincipalExtensions.GetMsalAccountId(), which reads the "uid"/"utid" claims
+            // (ClaimConstants.UniqueObjectIdentifier/UniqueTenantIdentifier) to build the cached
+            // account's home-account-id ("{uid}.{utid}") — NOT the ID token's own "oid"/"tid"
+            // claims. For a non-B2C work/school account uid==oid and utid==tid, so the values
+            // stored in GraphIdentity are correct; they just need to be attached under uid/utid
+            // for MSAL to find the cached account at all.
+            var principal = new ClaimsPrincipal(new ClaimsIdentity(
+            [
+                new Claim(ClaimConstants.UniqueObjectIdentifier, identity.UserObjectId),
+                new Claim(ClaimConstants.UniqueTenantIdentifier, identity.TenantId)
+            ]));
+            token = await tokenAcquisition.GetAccessTokenForUserAsync(
+                RequiredScopes,
+                tenantId: identity.TenantId,
+                user: principal);
         }
         catch (MicrosoftIdentityWebChallengeUserException)
         {

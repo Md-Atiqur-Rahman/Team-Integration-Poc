@@ -15,7 +15,7 @@ public sealed class FakeTeamsGraphService : ITeamsGraphService
 
     public int GetTeamsCallCount { get; private set; }
 
-    public Task<IReadOnlyList<TeamItem>> GetTeamsAsync(CancellationToken cancellationToken)
+    public Task<IReadOnlyList<TeamItem>> GetTeamsAsync(GraphIdentity identity, CancellationToken cancellationToken)
     {
         GetTeamsCallCount++;
         return ExceptionToThrow is not null
@@ -23,12 +23,16 @@ public sealed class FakeTeamsGraphService : ITeamsGraphService
             : Task.FromResult(Teams);
     }
 
-    public Task<IReadOnlyList<ChannelItem>> GetChannelsAsync(string teamId, CancellationToken cancellationToken) =>
+    public Task<IReadOnlyList<ChannelItem>> GetChannelsAsync(
+        GraphIdentity identity,
+        string teamId,
+        CancellationToken cancellationToken) =>
         ExceptionToThrow is not null
             ? Task.FromException<IReadOnlyList<ChannelItem>>(ExceptionToThrow)
             : Task.FromResult(Channels);
 
     public Task<SendChannelMessageResponse> SendMessageAsync(
+        GraphIdentity identity,
         SendChannelMessageRequest request,
         CancellationToken cancellationToken) =>
         ExceptionToThrow is not null

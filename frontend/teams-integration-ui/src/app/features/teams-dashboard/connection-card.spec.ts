@@ -16,8 +16,8 @@ describe('ConnectionCard', () => {
     store = TestBed.inject(TeamsDashboardStore);
   });
 
-  it('shows Not Connected and a Connect button when signed out', () => {
-    store.session.set({ isAuthenticated: false, isTeamsConnected: false, displayName: null });
+  it('shows Not Connected and a Connect button when the organization has no connection', () => {
+    store.orgConnectionStatus.set('none');
     const fixture = TestBed.createComponent(ConnectionCard);
     fixture.detectChanges();
 
@@ -28,9 +28,8 @@ describe('ConnectionCard', () => {
     );
   });
 
-  it('shows the persistent reconnect banner and action when needsReconnect is set', () => {
-    store.session.set({ isAuthenticated: true, isTeamsConnected: true, displayName: 'Test User' });
-    store.needsReconnect.set(true);
+  it('shows the persistent reconnect banner and action when the organization needs reconnecting', () => {
+    store.orgConnectionStatus.set('needsReconnect');
     const fixture = TestBed.createComponent(ConnectionCard);
     fixture.detectChanges();
 
@@ -40,7 +39,8 @@ describe('ConnectionCard', () => {
   });
 
   it('shows an Edit link when connected and viewing Send Message, and it switches to configure', () => {
-    store.session.set({ isAuthenticated: true, isTeamsConnected: true, displayName: 'Test User' });
+    store.orgConnectionStatus.set('active');
+    store.connectedAsEmail.set('connector@example.com');
     store.viewMode.set('send');
     const fixture = TestBed.createComponent(ConnectionCard);
     fixture.detectChanges();
@@ -55,7 +55,8 @@ describe('ConnectionCard', () => {
   });
 
   it('does not show an Edit link while the configuration form is already showing', () => {
-    store.session.set({ isAuthenticated: true, isTeamsConnected: true, displayName: 'Test User' });
+    store.orgConnectionStatus.set('active');
+    store.connectedAsEmail.set('connector@example.com');
     store.viewMode.set('configure');
     const fixture = TestBed.createComponent(ConnectionCard);
     fixture.detectChanges();
@@ -64,8 +65,19 @@ describe('ConnectionCard', () => {
     expect(text).not.toContain('Edit');
   });
 
+  it('shows Connected as the org-shared account, not a personal session', () => {
+    store.orgConnectionStatus.set('active');
+    store.connectedAsEmail.set('Atiqur.Himel@selisegroup.com');
+    const fixture = TestBed.createComponent(ConnectionCard);
+    fixture.detectChanges();
+
+    const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
+    expect(text).toContain('Connected');
+    expect(text).toContain('Atiqur.Himel@selisegroup.com');
+  });
+
   it('Connect navigates the full browser window rather than making an XHR', () => {
-    store.session.set({ isAuthenticated: false, isTeamsConnected: false, displayName: null });
+    store.orgConnectionStatus.set('none');
     const fixture = TestBed.createComponent(ConnectionCard);
     fixture.detectChanges();
 

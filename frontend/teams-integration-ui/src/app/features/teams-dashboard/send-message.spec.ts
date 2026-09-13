@@ -35,7 +35,8 @@ describe('SendMessage', () => {
 
     store = TestBed.inject(TeamsDashboardStore);
     httpMock = TestBed.inject(HttpTestingController);
-    store.session.set({ isAuthenticated: true, isTeamsConnected: true, displayName: 'Test User' });
+    store.orgConnectionStatus.set('active');
+    store.connectedAsEmail.set('connector@example.com');
   });
 
   function saveButton(fixture: { nativeElement: HTMLElement }): HTMLButtonElement {

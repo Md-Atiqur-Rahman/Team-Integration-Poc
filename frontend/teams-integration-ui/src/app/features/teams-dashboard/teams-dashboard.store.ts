@@ -1,7 +1,7 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import { TeamsApiClient, parseApiError } from '../../core/api-client/teams-api.client';
 import { DEFAULT_HOST_CONTEXT, HostContext } from '../../core/config';
-import { SessionStatus } from '../../core/models/session-status.model';
+import { OrganizationConnectionStatus } from '../../core/models/connection-status.model';
 import { ChannelItem, TeamItem } from '../../core/models/team.model';
 import { TeamsConfigurationDto } from '../../core/models/teams-configuration.model';
 import { SendMessageResponse } from '../../core/models/send-message.model';
@@ -14,7 +14,12 @@ export class TeamsDashboardStore {
   private readonly api = inject(TeamsApiClient);
 
   readonly hostContext = signal<HostContext>(readHostContextFromUrl());
-  readonly session = signal<SessionStatus | 'loading'>('loading');
+
+  // Reflects the ORGANIZATION's stored Teams connection (shared across every user in that
+  // organization), not this browser's own Entra session — any user in the org sees 'active' the
+  // moment anyone in the org has connected, with no OAuth of their own.
+  readonly orgConnectionStatus = signal<'loading' | OrganizationConnectionStatus>('loading');
+  readonly connectedAsEmail = signal<string | null>(null);
 
   readonly teams = signal<TeamItem[]>([]);
   readonly teamsLoading = signal(false);
@@ -30,7 +35,6 @@ export class TeamsDashboardStore {
   readonly viewMode = signal<ViewMode>('loading');
 
   readonly saveInProgress = signal(false);
-  readonly needsReconnect = signal(false);
   readonly errorMessage = signal<string | null>(null);
 
   readonly messageContent = signal('');
@@ -38,8 +42,8 @@ export class TeamsDashboardStore {
   readonly lastSentMessage = signal<SendMessageResponse | null>(null);
 
   readonly isConnected = computed(() => {
-    const session = this.session();
-    return session !== 'loading' && session.isTeamsConnected;
+    const status = this.orgConnectionStatus();
+    return status === 'active' || status === 'needsReconnect';
   });
 
   readonly canSave = computed(
@@ -57,15 +61,16 @@ export class TeamsDashboardStore {
   readonly connectUrl = computed(() => this.api.connectUrl(window.location.href));
 
   async initialize(): Promise<void> {
-    await this.loadSession();
+    await this.loadConnectionStatus();
   }
 
-  async loadSession(): Promise<void> {
-    this.session.set('loading');
+  async loadConnectionStatus(): Promise<void> {
+    this.orgConnectionStatus.set('loading');
     try {
-      const session = await this.api.getSession();
-      this.session.set(session);
-      if (session.isTeamsConnected) {
+      const status = await this.api.getConnectionStatus(this.hostContext().organizationId);
+      this.orgConnectionStatus.set(status.connectionStatus);
+      this.connectedAsEmail.set(status.connectedAsEmail);
+      if (status.connectionStatus === 'active') {
         await Promise.all([this.loadTeams(), this.loadConfiguration()]);
       }
     } catch (error) {
@@ -76,7 +81,7 @@ export class TeamsDashboardStore {
   async loadTeams(): Promise<void> {
     this.teamsLoading.set(true);
     try {
-      this.teams.set(await this.api.getTeams());
+      this.teams.set(await this.api.getTeams(this.hostContext().organizationId));
     } catch (error) {
       this.handleApiError(error);
     } finally {
@@ -94,7 +99,7 @@ export class TeamsDashboardStore {
   async loadChannels(teamId: string): Promise<void> {
     this.channelsLoading.set(true);
     try {
-      this.channels.set(await this.api.getChannels(teamId));
+      this.channels.set(await this.api.getChannels(teamId, this.hostContext().organizationId));
     } catch (error) {
       this.handleApiError(error);
     } finally {
@@ -113,9 +118,6 @@ export class TeamsDashboardStore {
       this.savedConfiguration.set(configuration);
       this.configurationLoadState.set(configuration ? 'loaded' : 'none');
       this.viewMode.set(configuration ? 'send' : 'configure');
-      if (configuration?.connectionStatus === 'needsReconnect') {
-        this.needsReconnect.set(true);
-      }
     } catch (error) {
       this.configurationLoadState.set('error');
       this.handleApiError(error);
@@ -139,7 +141,7 @@ export class TeamsDashboardStore {
       });
       this.savedConfiguration.set(configuration);
       this.configurationLoadState.set('loaded');
-      this.needsReconnect.set(false);
+      this.orgConnectionStatus.set('active');
       this.viewMode.set('send');
     } catch (error) {
       this.handleApiError(error);
@@ -187,7 +189,7 @@ export class TeamsDashboardStore {
   }
 
   markNeedsReconnect(): void {
-    this.needsReconnect.set(true);
+    this.orgConnectionStatus.set('needsReconnect');
   }
 
   private handleApiError(error: unknown): void {

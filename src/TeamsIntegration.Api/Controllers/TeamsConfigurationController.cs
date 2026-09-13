@@ -1,14 +1,15 @@
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Identity.Web;
 using TeamsIntegration.Api.DTOs;
 using TeamsIntegration.Api.Models;
 using TeamsIntegration.Api.Services;
 
 namespace TeamsIntegration.Api.Controllers;
 
+// Anonymous by design, both actions: saving a channel selection revalidates against Graph
+// using the org's stored connection (TeamsConfigurationService resolves that internally), not
+// the caller's own Entra session — any user in the org/project can configure a channel once the
+// org is connected, without their own Microsoft sign-in.
 [ApiController]
-[Authorize]
 [Route("api/teams/configuration")]
 public sealed class TeamsConfigurationController(ITeamsConfigurationService teamsConfigurationService)
     : ControllerBase
@@ -27,25 +28,12 @@ public sealed class TeamsConfigurationController(ITeamsConfigurationService team
             return BadRequest(new { code = validationError.Value.Code, message = validationError.Value.Message });
         }
 
-        var tenantId = User.FindFirst(ClaimConstants.TenantId)?.Value;
-        var userObjectId = User.FindFirst(ClaimConstants.ObjectId)?.Value;
-        if (string.IsNullOrWhiteSpace(tenantId) || string.IsNullOrWhiteSpace(userObjectId))
-        {
-            return Unauthorized(new
-            {
-                code = "microsoft_identity_missing",
-                message = "The connected Microsoft identity could not be determined."
-            });
-        }
-
         var configuration = await teamsConfigurationService.SaveAsync(
             request.OrganizationId!,
             request.ProjectId!,
             request.ApplicationId!,
             request.TeamId!,
             request.ChannelId!,
-            tenantId,
-            userObjectId,
             cancellationToken);
 
         return Ok(configuration);

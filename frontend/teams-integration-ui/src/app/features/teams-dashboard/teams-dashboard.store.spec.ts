@@ -31,9 +31,11 @@ describe('TeamsDashboardStore', () => {
   it('loading Teams populates the store', async () => {
     const loadPromise = store.loadTeams();
 
-    httpMock.expectOne(`${API_BASE_URL}/api/teams`).flush({
-      items: [{ id: 't1', displayName: 'Team One', description: null, isArchived: false }],
-    });
+    httpMock
+      .expectOne((req) => req.url.startsWith(`${API_BASE_URL}/api/teams?`))
+      .flush({
+        items: [{ id: 't1', displayName: 'Team One', description: null, isArchived: false }],
+      });
     await loadPromise;
 
     expect(store.teams()).toEqual([
@@ -47,17 +49,19 @@ describe('TeamsDashboardStore', () => {
 
     const selectPromise = store.selectTeam('team-2');
 
-    httpMock.expectOne(`${API_BASE_URL}/api/teams/team-2/channels`).flush({ items: [] });
+    httpMock
+      .expectOne((req) => req.url.startsWith(`${API_BASE_URL}/api/teams/team-2/channels?`))
+      .flush({ items: [] });
     await selectPromise;
 
     expect(store.selectedTeamId()).toBe('team-2');
     expect(store.selectedChannelId()).toBeNull();
   });
 
-  it('save success updates savedConfiguration and clears needsReconnect', async () => {
+  it('save success updates savedConfiguration and clears the reconnect state', async () => {
     store.selectedTeamId.set('t1');
     store.selectedChannelId.set('c1');
-    store.needsReconnect.set(true);
+    store.orgConnectionStatus.set('needsReconnect');
 
     const savePromise = store.saveConfiguration();
 
@@ -84,7 +88,7 @@ describe('TeamsDashboardStore', () => {
 
     expect(store.configurationLoadState()).toBe('loaded');
     expect(store.savedConfiguration()?.teamName).toBe('Team One');
-    expect(store.needsReconnect()).toBe(false);
+    expect(store.orgConnectionStatus()).toBe('active');
     expect(store.viewMode()).toBe('send');
   });
 
@@ -144,9 +148,11 @@ describe('TeamsDashboardStore', () => {
     expect(store.viewMode()).toBe('configure');
     expect(store.selectedTeamId()).toBe('t1');
 
-    httpMock.expectOne(`${API_BASE_URL}/api/teams/t1/channels`).flush({
-      items: [{ id: 'c1', displayName: 'General', description: null, membershipType: null, isArchived: false }],
-    });
+    httpMock
+      .expectOne((req) => req.url.startsWith(`${API_BASE_URL}/api/teams/t1/channels?`))
+      .flush({
+        items: [{ id: 'c1', displayName: 'General', description: null, membershipType: null, isArchived: false }],
+      });
     // Two ticks: one for loadChannels()'s own resolution, one for the store's deliberate
     // extra setTimeout(0) that lets the <option> elements render before selecting one.
     await flushMicrotasks();
@@ -160,14 +166,16 @@ describe('TeamsDashboardStore', () => {
     sessionStorage.clear();
 
     const initPromise = store.initialize();
-    httpMock.expectOne(`${API_BASE_URL}/api/auth/session`).flush({
-      isAuthenticated: true,
-      isTeamsConnected: true,
-      displayName: 'Test User',
-    });
+    httpMock
+      .expectOne((req) => req.url.startsWith(`${API_BASE_URL}/api/auth/connection-status`))
+      .flush({
+        isConnected: true,
+        connectionStatus: 'active',
+        connectedAsEmail: 'connector@example.com',
+      });
     await flushMicrotasks();
 
-    httpMock.expectOne(`${API_BASE_URL}/api/teams`).flush({ items: [] });
+    httpMock.expectOne((req) => req.url.startsWith(`${API_BASE_URL}/api/teams?`)).flush({ items: [] });
     httpMock
       .expectOne((req) => req.url.startsWith(`${API_BASE_URL}/api/teams/configuration`))
       .flush(
@@ -180,18 +188,54 @@ describe('TeamsDashboardStore', () => {
     expect(sessionStorage.length).toBe(0);
   });
 
-  it('a 401 reauthentication_required response sets needsReconnect instead of a generic error', async () => {
+  it('a connected organization loads teams and configuration without any OAuth of its own', async () => {
+    const initPromise = store.initialize();
+    httpMock
+      .expectOne((req) => req.url.startsWith(`${API_BASE_URL}/api/auth/connection-status`))
+      .flush({
+        isConnected: true,
+        connectionStatus: 'active',
+        connectedAsEmail: 'Atiqur.Himel@selisegroup.com',
+      });
+    await flushMicrotasks();
+
+    httpMock.expectOne((req) => req.url.startsWith(`${API_BASE_URL}/api/teams?`)).flush({ items: [] });
+    httpMock
+      .expectOne((req) => req.url.startsWith(`${API_BASE_URL}/api/teams/configuration`))
+      .flush(
+        { code: 'configuration_not_found', message: 'No configuration.' },
+        { status: 404, statusText: 'Not Found' },
+      );
+    await initPromise;
+
+    expect(store.orgConnectionStatus()).toBe('active');
+    expect(store.connectedAsEmail()).toBe('Atiqur.Himel@selisegroup.com');
+    expect(store.isConnected()).toBe(true);
+  });
+
+  it('an organization with no connection does not attempt to load teams or configuration', async () => {
+    const initPromise = store.initialize();
+    httpMock
+      .expectOne((req) => req.url.startsWith(`${API_BASE_URL}/api/auth/connection-status`))
+      .flush({ isConnected: false, connectionStatus: 'none', connectedAsEmail: null });
+    await initPromise;
+
+    expect(store.orgConnectionStatus()).toBe('none');
+    expect(store.isConnected()).toBe(false);
+  });
+
+  it('a 401 reauthentication_required response sets the org connection to needsReconnect instead of a generic error', async () => {
     const loadPromise = store.loadTeams();
 
     httpMock
-      .expectOne(`${API_BASE_URL}/api/teams`)
+      .expectOne((req) => req.url.startsWith(`${API_BASE_URL}/api/teams?`))
       .flush(
         { code: 'reauthentication_required', message: 'Authentication required' },
         { status: 401, statusText: 'Unauthorized' },
       );
     await loadPromise;
 
-    expect(store.needsReconnect()).toBe(true);
+    expect(store.orgConnectionStatus()).toBe('needsReconnect');
     expect(store.errorMessage()).toBeNull();
   });
 });
