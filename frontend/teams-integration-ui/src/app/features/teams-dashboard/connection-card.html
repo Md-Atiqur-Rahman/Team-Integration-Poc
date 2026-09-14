@@ -14,9 +14,6 @@
     @case ('active') {
       <p class="status status--connected">
         Connected
-        @if (store.connectedAsEmail(); as connectedAsEmail) {
-          <span> as {{ connectedAsEmail }}</span>
-        }
         @if (store.viewMode() === 'send') {
           <button type="button" class="link-button" (click)="edit()">Edit</button>
         }

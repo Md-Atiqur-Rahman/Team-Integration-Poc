@@ -65,7 +65,7 @@ describe('ConnectionCard', () => {
     expect(text).not.toContain('Edit');
   });
 
-  it('shows Connected as the org-shared account, not a personal session', () => {
+  it('shows a plain Connected status without exposing the org-shared account holder\'s email', () => {
     store.orgConnectionStatus.set('active');
     store.connectedAsEmail.set('Atiqur.Himel@selisegroup.com');
     const fixture = TestBed.createComponent(ConnectionCard);
@@ -73,7 +73,7 @@ describe('ConnectionCard', () => {
 
     const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(text).toContain('Connected');
-    expect(text).toContain('Atiqur.Himel@selisegroup.com');
+    expect(text).not.toContain('Atiqur.Himel@selisegroup.com');
   });
 
   it('Connect navigates the full browser window rather than making an XHR', () => {
